@@ -157,3 +157,14 @@ There needs to be a syntactic distinction between values and functions that take
   fac n -> n * fac (n-1)
 
 By-name parameters need to exist, but it makes no sense to allow by-name values in other places. However, zero-argument functions can use the same syntax, which is prepending a ~ to the name.
+
+
+Perhaps, when an identifier isn't associated with a value, the program should look in the current directory for any executable with that name. This would make it very simple to call existing programs.
+
+From inside the REPL, it should be possible to define a function and then save it to a file. This will be tricky because it'll also have to save every referenced identifier. Alternatively, it should save the state of the REPL from one run to the next, so you pick up right where you left off. However, how does this interact with having multiple shells open at once? And it's not quite as simple as copying all the commands you've executed to a file; the REPL allows you to redefine things while the normal language doesn't. It would be ridiculous to reexecute every instruction that you've ever typed in order to recover the state, so the only option is to somehow store the current state of the environmeent. That's tricky, since the environment is enclosed in IORefs, but it's possible to get rid of them before saving. A bigger problem is saving/loading primitives. However, that can be solved by saving the name of the primitive instead of the primitive itself, but it'll be somewhat tricky to restore properly.
+
+TODO: add sections, tuple sections
+
+TODO: disallow "=" syntax for functions. 
+
+It should be possible to use either "=" or "->" for data declarations. "data Empty = {...}" and "data Empty -> {...}" are very different. However, the second one looks a bit strange, so I'd like a better syntax for it.

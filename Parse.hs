@@ -33,7 +33,7 @@ import Eval
 parseStatement = parseExec <|> parseVarDef <|> try parseDef <|> tryParseAssign
 
 parseExec = do
-  symbol "\\"
+  symbol "/"
   str <- some (noneOf separators)
   pure (EFnApp (eId "execRaw") [Arg $ makeString str])
 
@@ -52,7 +52,7 @@ parseDef = do
     parseValDef = EDef id <$> (wholeSymbol "=" *> parseExpr)
     parseFnDef = do
       params <- many parseParam
-      body <- (if not (null params) then wholeSymbol "=" *> parseExpr else mzero) <|> symbol "->" *> parseExpr
+      body <- symbol "->" *> parseExpr
       pure $ EDef id (EFn params body)
   parseValDef <|> parseFnDef
 
@@ -70,18 +70,19 @@ parseCompound = many separator *> sepEndBy parseStatement (some separator)
 
 
 parseParam = asum [parseOptParam, try parseRepParam, parseReqParam]
-parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol ":" *> parseExpr)
+parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (wholeSymbol ":" *> parseExpr)
 parseRepParam = RepParam <$> identifier' <* symbol "*"
 parseReqParam = ReqParam <$> identifier'
 
 parseExpr = parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
 parseNonIf = buildExpressionParser opTable parseWith
-parseNonWithExpr = parseFnApp
-parseNonFnAppExpr = parseMemberAccess
-parseNonMemberAccess = parseNew <|> parseSingleTokenExpr
+parseNonWithExpr = try parseFn <|> parseFnApp
+parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
 
-parseSingleTokenExpr = asum [parseBlock, parseParens, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseSingleTokenExpr = parseMemberAccess
+parseNonMemberAccess = parseOtherExpr
+parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
 parsePipes = do
   start <- parseNonPipeExpr
@@ -91,8 +92,11 @@ parsePipes = do
     f obj (id,args) = EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
 
-parseParens = between (symbol "(") (symbol ")") parseExpr
-parseList = makeList <$> (symbol "[" *> many separator *> sepEndBy parseExpr (some separator) <* symbol "]")
+--parseParens = between (symbol "(") (symbol ")") parseExpr
+parseList = makeList <$> (symbol "[" *> sepEndBy parseExpr separator <* symbol "]")
+parseTuple = do
+  first <- symbol "(" *> parseExpr
+  (symbol ")" *> pure first) <|> (makeTuple . (first:) <$> (separator *> sepEndBy parseExpr separator <* symbol ")"))
 
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
@@ -103,7 +107,7 @@ parseArg = do
   first <- try parseNonFnAppExpr
   let
     parseKeywordArg = do
-      symbol ":"
+      wholeSymbol ":"
       case first of
         EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
         _ -> mzero
@@ -125,7 +129,7 @@ parseIf = do
   t <- parseNonIf
   f <- parseElse <|> pure EVoid
   pure (EIf cond t f)
-parseElse = symbol "else" *> parseExpr
+parseElse = anyWhiteSpace *> symbol "else" *> parseExpr
 
 parseFn = do
   params <- many parseParam
@@ -159,7 +163,7 @@ binopR startChar = Infix (try $ do
   pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
   ) AssocRight
 
-reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\"]
+reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
 keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]
 
 identStart = satisfy isAlpha
@@ -213,8 +217,12 @@ wholeSymbol str = lexeme $ do
   if str==str' then pure str else mzero
 lexeme p = try p <* whiteSpace
 
---We don't allow newlines as whitespace because they are statement separators
-whiteSpace = skipMany (void (oneOf " \t") <|> oneLineComment <|> multiLineComment) <?> "whitespace"
+--We don't allow newlines as whitespace because they are statement separators; the symbol "\" followed by a newline must be used instead
+whiteSpace = whiteSpace' " \t"
+anyWhiteSpace = whiteSpace' " \t\n"
+
+whiteSpace' :: String -> Parsec String () ()
+whiteSpace' whitespace = skipMany (void (oneOf whitespace) <|> oneLineComment <|> multiLineComment <|> void (symbol "\\\n")) <?> "whitespace"
 
 commentLine = "//"
 commentStart = "/*"

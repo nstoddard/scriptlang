@@ -89,7 +89,9 @@ envRemoveIORefs (EnvStack xs) = mapM get xs
 
 --- Expressions ---
 
-data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString String | PList [Expr] deriving Show
+--TODO: statements and expressions should have separate types! They're handled separately in the parser, already.
+
+data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString String | PList [Expr] | PTuple [Expr] deriving Show
 
 data Expr =
   EVoid |
@@ -98,7 +100,7 @@ data Expr =
   EDef String Expr | EVarDef String Expr | EAssign Expr Expr |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
-  EClosure [Param] Expr EnvStack | EValClosure Expr EnvStack |
+  EClosure [Param] Expr EnvStack |
   EIf Expr Expr Expr
 
 data AccessType = ByVal | ByName deriving (Eq,Show)
@@ -131,8 +133,8 @@ hsep (x:xs) = x </> hsep xs
 prettyBlock [] = pretty "{" P.<$> pretty "}"
 prettyBlock xs = pretty "{" P.<$> P.indent 2 (P.vcat (map pretty xs)) P.<$> pretty "}"
 
-prettyList [] = pretty "[" P.<$> pretty "]"
-prettyList xs = pretty "[" P.<$> P.indent 2 (P.vcat (map pretty xs)) P.<$> pretty "]"
+prettyList xs = pretty "[" <//> P.cat (P.punctuate P.comma $ map pretty xs) <//> pretty "]"
+prettyTuple xs = pretty "(" <//> P.cat (P.punctuate P.comma $ map pretty xs) <//> pretty ")"
 
 instance Pretty AccessType where
   pretty ByVal = pretty ""
@@ -165,7 +167,6 @@ instance Pretty Expr where
   pretty (EWith a b) = pretty a </> pretty "with" </> pretty b
   pretty (EObj obj) = pretty obj
   pretty (EClosure {}) = pretty "<closure>"
-  pretty (EValClosure {}) = pretty "<valClosure>"
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
 
 instance Pretty PrimData where
@@ -175,6 +176,7 @@ instance Pretty PrimData where
   pretty (PChar x) = pretty '#' <//> pretty x
   pretty (PString x) = pretty '"' <//> pretty x <//> pretty '"'
   pretty (PList xs) = prettyList xs
+  pretty (PTuple xs) = prettyTuple xs
 
 
 
@@ -204,7 +206,6 @@ instance Show Expr where
   show (EWith a b)         = "(EWith " ++ show a ++ " " ++ show b ++ ")"
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
   show (EClosure a b c)    = "(EClosure " ++ show a ++ " " ++ show b ++ " " ++ "<env>" ++ ")"
-  show (EValClosure a b)   = "(EValClosure " ++ show a ++ " " ++ "<env>" ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
 
 

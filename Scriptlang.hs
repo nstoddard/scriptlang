@@ -3,18 +3,26 @@
 module Scriptlang where
 
 {- TODO
-  To get working:
-    map f xs -> if (xs.empty) [] else f (xs.head) : map f xs.tail
-      (need parens around a lot of stuff)
-    map (a => a + 2) [1,2,3]
-    a => a + 2
   To implement:
-    Providing only part of a function's argument at a time, and substituting the rest later
+    Providing only some of a function's arguments at a time, and substituting the rest later
     Function overloading
     Types and pattern matching
     Generators
     Syntax for specifying chars with a hex code
     Line numbers for errors
+    I/O
+    Extension methods
+    Finish matchParams
+    Add a method to be called when a method isn't defined
+    Data declarations
+    toString
+    Maps
+    Tuples
+    Glob syntax
+    Command history
+    Function composition (f.o g, perhaps); treating functions as objects
+    Calling an object as though it's a function?
+    Cloning?
 
   Improve syntax errors:
     When typing "5 /*" it should say it expects the end of the comment

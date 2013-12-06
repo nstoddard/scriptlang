@@ -38,7 +38,7 @@ evalID (EId (id,accessType)) notFoundMsg env = do
       (ByVal, ByVal) -> pure (val,env)
       (ByVal, ByName) -> eval val env
       (ByName, ByName) -> pure (val,env)
-      (ByName, ByVal) -> pure (EValClosure val env, env) --TODO: does this make sense?
+      (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
 
 
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
@@ -84,17 +84,14 @@ eval (EFnApp fn args) env = do
       forM_ args' $ \(name,accessType,val) -> envDefine name (val,accessType) bodyEnv
       (res,_) <- fn bodyEnv
       pure (res,env)
-    --In this case it's not a function application at all, but a member access
-    --In this case, we're pretending it's an operator, so it can only take 2 arguments
-    --This should ideally be part of the parser, but the parser doesn't have access to type info so it can't do this
-    --TODO: allow it to take more than 2 arguments! It'll require the use of | as a separator, but it's worth it
     EObj obj -> case args of
-      (Arg (EId (id,ByVal)):arg:[]) -> eval (EFnApp (EMemberAccess (EObj obj) id) [arg]) env
-      (Arg (EId (id,ByVal)):arg:args) -> eval (EFnApp (EFnApp (EMemberAccess (EObj obj) id) [arg]) args) env
-      _ -> throwError ("Invalid function: " ++ show (EObj obj))
+      args'@(Arg (EId (id,ByVal)):args) -> do
+        val <- envLookup id env
+        case val of
+          Just val -> evalApply obj args' env
+          Nothing -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
+      args -> evalApply obj args env
     x -> throwError ("Invalid function: " ++ show x)
-
-eval (EValClosure expr closure) env = ((,env) . fst) <$> eval expr closure
 eval (EPrim [] fn) env = do
   bodyEnv <- envNewScope =<< lift newEnvStack
   (res,_) <- fn bodyEnv
@@ -131,6 +128,8 @@ replEval (EDef id val) env = do
   pure (EVoid, env)
 replEval expr env = eval expr env
 
+
+evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 
 --Don't forget to evaluate the arguments too!
 matchParams :: [Param] -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
@@ -218,7 +217,9 @@ makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
   ("&&", primUnop $ onBool (a&&)),
   ("||", primUnop $ onBool (a||))
   ]
-makeString a = EObj $ PrimObj (PString a) $ envFromList []
+makeString a = EObj $ PrimObj (PString a) $ envFromList [
+  ("apply", primUnop $ onInt (\i -> makeChar <$> index a i))
+  ]
 makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("head", nilop $ if null a then throwError "Can't take the head of an empty list" else pure (head a)),
   ("tail", nilop $ if null a then throwError "Can't take the tail of an empty list" else pure (makeList $ tail a)),
@@ -226,8 +227,15 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("last", nilop $ if null a then throwError "Can't take the last of an empty list" else pure (last a)),
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
-  (":", unop $ \b -> pure $ makeList (b:a))
+  ("::", unop $ \b -> pure $ makeList (b:a)),
+  ("apply", primUnop $ onInt (index a))
   ]
+makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
+  ("apply", primUnop $ onInt (index a))
+  ]
+
+index :: [a] -> Integer -> IOThrowsError a
+index xs i = if i >= 0 && i < genericLength xs then pure (xs `genericIndex` i) else throwError "Invalid index!"
 
 prim :: [String] -> (Map String Expr -> IOThrowsError Expr) -> Expr
 prim args f = EPrim (map reqParam args) $ \env -> (,env) <$> (f =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
@@ -250,6 +258,10 @@ intOnNum onInt onFloat _ = throwError "Invalid argument to intOnNum"
 intOnInt :: (Integer -> Integer) -> (PrimData -> IOThrowsError Expr)
 intOnInt onInt (PInt b) = pure . makeInt $ onInt b
 intOnInt onInt _ = throwError "Invalid argument to intOnInt"
+
+onInt :: (Integer -> IOThrowsError Expr) -> (PrimData -> IOThrowsError Expr)
+onInt f (PInt b) = f b
+onInt f _ = throwError "Invalid argument to onInt"
 
 --TODO: will the user EVER provide 2 different functions for this?
 floatOnNum :: (Double -> Double) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
