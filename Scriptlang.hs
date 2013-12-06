@@ -11,8 +11,23 @@ module Scriptlang where
   When doing "5.test", it says "identifier not found" when it should say "object 5 has no such field test"
   "If" doesn't work since it has higher precedence than operators - you can't do "if cond then a*b"; you need parens around (a*b)
   You probably shouldn't be able to do "new {x=5}.x"; it should probably parse as "new ({x=5}.x)"
-  Assert everywhere that functions must have at least one argument
-    Are you allowed to provide zero arguments to a function that takes only optional arguments?
+  Are you allowed to provide zero arguments to a function that takes only optional arguments?
+    I absolutely need to support this.
+    Perhaps the syntax for defining a function should use "=>" instead of "=". So you'd have:
+      pi = 3.14
+    but
+      ls -> exec 'ls'
+      double n -> n*2
+    what about:
+      double n = n*2
+    The latter signifies that it's a pure function, so its results can be cached. Nah, I'll never get around to implementing caching. I should allow the syntax anyway; it's more consistent and it looks nice.
+    But anonymous functions already use =>, so it's ambiguous whether "f n => n*2" is an anonymous function of 2 arguments or a named function of 1 argument
+    f = n => n*2
+    f n -> n*2
+    f n -> {
+      println n
+      f (n-1)
+    }
   TODO: overloading
   TODO: use ByName access type for some builtin functions
   TODO: do by-name optional parameters make sense?
@@ -21,6 +36,13 @@ module Scriptlang where
   Add types and pattern matching
   Add generators
   Verify that pipes work and are actually useful
+  Add glob and regex support
+    Glob syntax:
+      * - match 0 or more unknown chars
+      \ - escape char - next char is treated as a normal char
+      We could add more glob syntax than this, but it's probably better to use a regex for anything more complicated
+  Avoid using "system"; always use "rawSystem"
+  TODO: disallow ~ on everything but parameters - zero-argument functions have replaced them
 -}
 
 import Data.List

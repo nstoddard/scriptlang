@@ -34,7 +34,8 @@ eval (EId (id,accessType)) env = do
   val <- envLookup id env
   case val of
     Nothing -> throwError $ "Identifier not found: " ++ id
-    Just (val,accessType2) -> case (accessType,accessType2) of
+    Just (closure@(EClosure [] _ _), accessType2) -> eval closure env --TODO: what do we do with the access type here?
+    Just (val, accessType2) -> case (accessType,accessType2) of
       (ByVal, ByVal) -> pure (val,env)
       (ByVal, ByName) -> eval val env
       (ByName, ByName) -> pure (val,env)
@@ -49,14 +50,12 @@ eval (EMemberAccess obj id) env = do
       (val,_) <- eval (eId id) =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
-eval (EDef (id,accessType) val) env = do
+eval (EDef id val) env = do
   oldVal <- envLookup id env
   case oldVal of
     Nothing -> do
-      (val',_) <- case accessType of
-        ByVal -> eval val env
-        ByName -> pure (EValClosure val env, env) --TODO: First.hs just returns (val,env)
-      envDefine id (val',accessType) env
+      (val',_) <- eval val env
+      envDefine id (val',ByVal) env
       pure (EVoid, env)
     Just _ -> throwError ("Can't reassign variable " ++ id)
 eval (EObj obj) env = pure (EObj obj, env)
@@ -90,28 +89,11 @@ eval (EFnApp fn args) env = do
       _ -> throwError ("Invalid function: " ++ show (EObj obj))
     x -> throwError ("Invalid function: " ++ show x)
 
-{-
-eval (EFnApp fn arg) env = do
-  (fn', _) <- eval fn env
-  (res, _) <- case fn' of
-    EClosure (argName, argAccessType) argType body closure -> do
-      ...
-      bodyEnv <- envNewScope closure
-      envDefine argName (arg',argAccessType) bodyEnv
-      (result,_) <- eval body bodyEnv
-      pure (result, env)
-    EBuiltinFn evalArg f -> if evalArg
-      then do
-        (arg', _) <- eval arg env
-        f arg' env
-      else f arg env
-    _ -> throwError $ "Not a function: " ++ prettyPrint fn'
-  pure (res, env)
--}
-
-
-
 eval (EValClosure expr closure) env = ((,env) . fst) <$> eval expr closure
+eval (EClosure [] body closure) env = do
+  bodyEnv <- envNewScope closure
+  (res,_) <- eval body bodyEnv
+  pure (res,env)
 eval (EClosure {}) env = throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do
   env' <- envNewScope env
@@ -134,11 +116,9 @@ eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
 replEval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
-replEval (EDef (id,accessType) val) env = do
-  (val',_) <- case accessType of
-    ByVal -> eval val env
-    ByName -> pure (EValClosure val env, env) --TODO: First.hs just returns (val,env)
-  envRedefine id (val',accessType) env
+replEval (EDef id val) env = do
+  (val',_) <- eval val env
+  envRedefine id (val',ByVal) env
   pure (EVoid, env)
 replEval expr env = eval expr env
 

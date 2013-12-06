@@ -46,7 +46,7 @@ envStackFromList :: [(String,Expr)] -> IO EnvStack
 envStackFromList xs = (EnvStack . (:[])) <$> newIORef (envFromList xs)
 
 newEnvStack :: IO EnvStack
-newEnvStack = (EnvStack . (:[])) <$> newIORef (M.empty)
+newEnvStack = (EnvStack . (:[])) <$> newIORef M.empty
 
 envNewScope :: EnvStack -> IOThrowsError EnvStack
 envNewScope (EnvStack xs) = do
@@ -95,7 +95,7 @@ data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EPrim [Param] (EnvStack -> IOThrowsError (Expr,EnvStack)) | EFn [Param] Expr |
-  EDef Identifier Expr | EVarDef String Expr | EAssign Expr Expr |
+  EDef String Expr | EVarDef String Expr | EAssign Expr Expr |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EClosure [Param] Expr EnvStack | EValClosure Expr EnvStack |
@@ -112,7 +112,7 @@ data Arg = Arg Expr | KeywordArg String Expr deriving Show
 type IOThrowsError = ErrorT String IO
 
 reqParam name = ReqParam (name,ByVal)
-optParam name defaultVal = OptParam (name,ByVal) defaultVal
+optParam name = OptParam (name,ByVal)
 repParam name = RepParam (name,ByVal)
 
 eId name = EId (name,ByVal)
@@ -148,14 +148,14 @@ instance Pretty Arg where
 instance Pretty Expr where
   pretty EVoid = pretty "void"
   pretty (EId (id,accessType)) = pretty accessType <//> pretty id
+  pretty (EFnApp f []) = pretty f
   pretty (EFnApp f args) = pretty "(" <//> pretty f </> hsep (map pretty args) <//> pretty ")"
   pretty (EMemberAccess obj id) = if isOperator id
     then pretty obj </> pretty id
     else pretty obj <//> pretty "." <//> pretty id
   pretty (EPrim _ _) = pretty "<prim>"
   pretty (EFn params body) = hsep (map pretty params) </> pretty "=>" </> pretty body
-  pretty (EDef (id,accessType) val) = pretty accessType <//> pretty id </> pretty "=" </> pretty val
-  --pretty (EExtendDef obj name val) = pretty "extend" </> pretty obj </> pretty name </> pretty "=" </> pretty val
+  pretty (EDef id val) = pretty id </> pretty "=" </> pretty val
   pretty (EVarDef id val) = pretty "var" </> pretty id </> pretty "<-" </> pretty val
   pretty (EAssign var val) = pretty var </> pretty "<-" </> pretty val
   pretty (EBlock xs) = prettyBlock xs
@@ -194,7 +194,6 @@ instance Show Expr where
   show (EPrim _ _)           = "(EPrim <prim>" ++ ")"
   show (EFn params body)   = "(EFn " ++ show params ++ " " ++ show body ++ ")"
   show (EDef a b)          = "(EDef " ++ show a ++ " " ++ show b ++ ")"
-  --show (EExtendDef a b c)  = "(EExtend " ++ show a ++ " " ++ show b ++ " " ++ show c ++ ")"
   show (EVarDef a b)       = "(EVarDef " ++ show a ++ " " ++ show b ++ ")"
   show (EAssign a b)       = "(EAssign " ++ show a ++ " " ++ show b ++ ")"
   show (EBlock xs)         = "(EBlock " ++ show xs ++ ")"

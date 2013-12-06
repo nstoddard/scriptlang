@@ -47,13 +47,13 @@ identifier' = do
   pure (id,accessType)
 
 parseDef = do
-  (id,accessType) <- identifier'
+  id <- identifier
   let
-    parseValDef = EDef (id,accessType) <$> (symbol "=" *> parseExpr)
-    parseFnDef = if accessType/=ByVal then mzero else do
-      params <- some parseParam
-      body <- symbol "=" *> parseExpr
-      pure $ EDef (id,accessType) (EFn params body)
+    parseValDef = EDef id <$> (symbol "=" *> parseExpr)
+    parseFnDef = do
+      params <- many parseParam
+      body <- (if not (null params) then symbol "=" *> parseExpr else mzero) <|> symbol "->" *> parseExpr
+      pure $ EDef id (EFn params body)
   parseValDef <|> parseFnDef
 
 
@@ -97,7 +97,7 @@ parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
   first <- parseNonFnAppExpr
   (EFnApp first <$> some parseArg) <|> pure first
-parsePrefixOp = EFnApp <$> (eId <$> operator') <*> some parseArg
+parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg) --TODO: this used to say "some parseArg", but prefix operators can only take 1 argument
 parseArg = do
   first <- try parseNonFnAppExpr
   let
@@ -127,7 +127,7 @@ parseIf = do
 parseElse = symbol "else" *> parseExpr
 
 parseFn = do
-  params <- some parseParam
+  params <- many parseParam
   body <- symbol "=>" *> parseExpr
   pure (EFn params body)
 
@@ -157,7 +157,7 @@ binopR startChar = Infix (try $ do
   pure (\a b -> EFnApp (EMemberAccess a name) [Arg b])
   ) AssocRight
 
-reservedOps = ["|", "~", "=", "->", "<-", "?", "\\"]
+reservedOps = ["|", "~", "=", "=>", "<-", "?", "\\"]
 keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]
 
 identStart = satisfy isAlpha
