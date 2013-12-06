@@ -49,10 +49,10 @@ identifier' = do
 parseDef = do
   id <- identifier
   let
-    parseValDef = EDef id <$> (symbol "=" *> parseExpr)
+    parseValDef = EDef id <$> (wholeSymbol "=" *> parseExpr)
     parseFnDef = do
       params <- many parseParam
-      body <- (if not (null params) then symbol "=" *> parseExpr else mzero) <|> symbol "->" *> parseExpr
+      body <- (if not (null params) then wholeSymbol "=" *> parseExpr else mzero) <|> symbol "->" *> parseExpr
       pure $ EDef id (EFn params body)
   parseValDef <|> parseFnDef
 
@@ -62,7 +62,7 @@ parseVarDef = do
   val <- (symbol "<-" *> parseExpr) <|> pure EVoid
   pure $ EVarDef name val
 
-separators = ";\n"
+separators = ";,\n"
 separator = lexeme (oneOf separators)
 parseBlock = EBlock <$> block
 block = symbol "{" *> many separator *> sepEndBy parseStatement (some separator) <* symbol "}"
@@ -81,7 +81,7 @@ parseNonWithExpr = parseFnApp
 parseNonFnAppExpr = parseMemberAccess
 parseNonMemberAccess = parseNew <|> parseSingleTokenExpr
 
-parseSingleTokenExpr = asum [parseBlock, parseParens, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseSingleTokenExpr = asum [parseBlock, parseParens, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
 parsePipes = do
   start <- parseNonPipeExpr
@@ -92,6 +92,7 @@ parsePipes = do
   pure $ foldl f start xs
 
 parseParens = between (symbol "(") (symbol ")") parseExpr
+parseList = makeList <$> (symbol "[" *> many separator *> sepEndBy parseExpr (some separator) <* symbol "]")
 
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
@@ -140,7 +141,8 @@ parseVoid = symbol "void" *> pure EVoid
 
 opTable = [
   op '*' ++ op '/' ++ op '%',
-  op '+' ++ op '-' ++ op ':',
+  op '+' ++ op '-',
+  op ':',
   op '=' ++ op '!',
   op '<' ++ op '>',
   op '&',
@@ -154,10 +156,10 @@ binopL startChar = Infix (try $ do
   ) AssocLeft
 binopR startChar = Infix (try $ do
   name <- operator startChar True
-  pure (\a b -> EFnApp (EMemberAccess a name) [Arg b])
+  pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
   ) AssocRight
 
-reservedOps = ["|", "~", "=", "=>", "<-", "?", "\\"]
+reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\"]
 keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]
 
 identStart = satisfy isAlpha
@@ -202,7 +204,13 @@ escapeChars = [
 
 parseWholeInput = between whiteSpace eof
 
+
 symbol = lexeme . string
+--wholeSymbol is sometimes useful, but it makes a lot of assumptions about the nature of the given symbol. It can't be used everywhere because it conflicts with parens and other symbols that can be right next to each other - those particular symbols could be handled specially
+wholeSymbol str = lexeme $ do
+  let f = if isAlphaNum (head str) then satisfy isAlphaNum else satisfy (\x -> not (isAlphaNum x || isSpace x))
+  str' <- some f
+  if str==str' then pure str else mzero
 lexeme p = try p <* whiteSpace
 
 --We don't allow newlines as whitespace because they are statement separators

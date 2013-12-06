@@ -89,7 +89,7 @@ envRemoveIORefs (EnvStack xs) = mapM get xs
 
 --- Expressions ---
 
-data Prim = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString String deriving Show
+data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString String | PList [Expr] deriving Show
 
 data Expr =
   EVoid |
@@ -99,12 +99,11 @@ data Expr =
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EClosure [Param] Expr EnvStack | EValClosure Expr EnvStack |
-  EIf Expr Expr Expr |
-  EList [Expr] --TODO: add parsing for lists
+  EIf Expr Expr Expr
 
 data AccessType = ByVal | ByName deriving (Eq,Show)
 
-data Obj = Obj Env | PrimObj Prim Env
+data Obj = Obj Env | PrimObj PrimData Env
 
 data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier deriving Show
 data Arg = Arg Expr | KeywordArg String Expr deriving Show
@@ -131,6 +130,9 @@ hsep (x:xs) = x </> hsep xs
 
 prettyBlock [] = pretty "{" P.<$> pretty "}"
 prettyBlock xs = pretty "{" P.<$> P.indent 2 (P.vcat (map pretty xs)) P.<$> pretty "}"
+
+prettyList [] = pretty "[" P.<$> pretty "]"
+prettyList xs = pretty "[" P.<$> P.indent 2 (P.vcat (map pretty xs)) P.<$> pretty "]"
 
 instance Pretty AccessType where
   pretty ByVal = pretty ""
@@ -166,12 +168,13 @@ instance Pretty Expr where
   pretty (EValClosure {}) = pretty "<valClosure>"
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
 
-instance Pretty Prim where
+instance Pretty PrimData where
   pretty (PInt x) = pretty x
   pretty (PFloat x) = pretty x
   pretty (PBool x) = pretty x
   pretty (PChar x) = pretty '#' <//> pretty x
   pretty (PString x) = pretty '"' <//> pretty x <//> pretty '"'
+  pretty (PList xs) = prettyList xs
 
 
 

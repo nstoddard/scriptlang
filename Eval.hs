@@ -28,26 +28,30 @@ import Util
 import Expr
 
 
-eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
-eval EVoid env = pure (EVoid, env)
-eval (EId (id,accessType)) env = do
+evalID (EId (id,accessType)) notFoundMsg env = do
   val <- envLookup id env
   case val of
-    Nothing -> throwError $ "Identifier not found: " ++ id
+    Nothing -> throwError $ notFoundMsg ++ id
     Just (closure@(EClosure [] _ _), accessType2) -> eval closure env --TODO: what do we do with the access type here?
+    Just (prim@(EPrim [] fn), accessType2) -> eval prim env --TODO: what do we do with the access type here?
     Just (val, accessType2) -> case (accessType,accessType2) of
       (ByVal, ByVal) -> pure (val,env)
       (ByVal, ByName) -> eval val env
       (ByName, ByName) -> pure (val,env)
       (ByName, ByVal) -> pure (EValClosure val env, env) --TODO: does this make sense?
+
+
+eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
+eval EVoid env = pure (EVoid, env)
+eval id@(EId {}) env = evalID id "Identifier not found: " env
 eval (EMemberAccess obj id) env = do
   obj <- eval obj env
   case obj of
     (EObj (Obj oenv),_) -> do
-      (val,_) <- eval (eId id) =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (EObj (PrimObj prim oenv),_) -> do
-      (val,_) <- eval (eId id) =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
 eval (EDef id val) env = do
@@ -83,6 +87,7 @@ eval (EFnApp fn args) env = do
     --In this case it's not a function application at all, but a member access
     --In this case, we're pretending it's an operator, so it can only take 2 arguments
     --This should ideally be part of the parser, but the parser doesn't have access to type info so it can't do this
+    --TODO: allow it to take more than 2 arguments! It'll require the use of | as a separator, but it's worth it
     EObj obj -> case args of
       (Arg (EId (id,ByVal)):arg:[]) -> eval (EFnApp (EMemberAccess (EObj obj) id) [arg]) env
       (Arg (EId (id,ByVal)):arg:args) -> eval (EFnApp (EFnApp (EMemberAccess (EObj obj) id) [arg]) args) env
@@ -90,6 +95,10 @@ eval (EFnApp fn args) env = do
     x -> throwError ("Invalid function: " ++ show x)
 
 eval (EValClosure expr closure) env = ((,env) . fst) <$> eval expr closure
+eval (EPrim [] fn) env = do
+  bodyEnv <- envNewScope =<< lift newEnvStack
+  (res,_) <- fn bodyEnv
+  pure (res,env)
 eval (EClosure [] body closure) env = do
   bodyEnv <- envNewScope closure
   (res,_) <- eval body bodyEnv
@@ -123,14 +132,6 @@ replEval (EDef id val) env = do
 replEval expr env = eval expr env
 
 
-{-
-(arg',_) <- case argAccessType of
-        ByVal -> eval arg env
-        ByName -> case arg of
-          arg@(EId (id,ByName)) -> eval arg env --We must evaluate in this case or we end up trying to treat an identifier as a value
-          _ -> pure (arg, env)
--}
-
 --Don't forget to evaluate the arguments too!
 matchParams :: [Param] -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
 matchParams [] [] _ = pure []
@@ -139,7 +140,7 @@ matchParams [RepParam (name,accessType)] args env = do
   args <- forM args $ \arg -> case arg of
     Arg arg -> fst <$> eval arg env
     _ -> throwError $ "Invalid argument for repeated parameter " ++ name
-  pure [(name, accessType, EList args)]
+  pure [(name, accessType, makeList args)]
 matchParams params arg env = throwError $ "matchParams unimplemented for " ++ show (params,arg)
 
 
@@ -151,18 +152,6 @@ evalArg name accessType arg env = do
   pure (name,accessType,arg')
 
 
-{-data   EVoid{- | EInt Integer-} | EFloat Double | EBool Bool | EChar Char |
-  EId String | EFnApp Expr [Arg] | EMemberAccess Expr String |
-  EPrim [Param] (Env -> IOThrowsError (Expr,Env)) | EFn [Param] Expr |
-  EDef String Expr | EVarDef String Expr | EAssign Expr Expr |
-  EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
-  EObj Obj |
-  EClosure [Param] Expr Env |
-  --EExtendDef Param String Expr |
-  EData String [Param] 
-
--}
-
 
 envLookup' name env = fst <$> eval (EId (name,ByVal)) env
 
@@ -171,12 +160,12 @@ startEnv :: IO EnvStack
 startEnv = envStackFromList [
   ("-", primUnop $ intOnNum negate negate),
   ("!", primUnop $ onBool not),
-  ("exit", prim [] (const $ lift exitSuccess)),
+  ("exit", nilop (lift exitSuccess)),
   ("exec", EPrim [reqParam "proc", repParam "args"] $ \env -> do
     proc <- envLookup' "proc" env
     args <- envLookup' "args" env
     case (proc, args) of
-      (EObj (PrimObj (PString proc) _), EList args) -> do
+      (EObj (PrimObj (PString proc) _), EObj (PrimObj (PList args) _)) -> do
         args <- forM args $ \arg -> case arg of
           EObj (PrimObj (PString arg) _) -> pure arg
           _ -> throwError "Invalid argument to exec"
@@ -230,42 +219,55 @@ makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
   ("||", primUnop $ onBool (a||))
   ]
 makeString a = EObj $ PrimObj (PString a) $ envFromList []
-
+makeList a = EObj $ PrimObj (PList a) $ envFromList [
+  ("head", nilop $ if null a then throwError "Can't take the head of an empty list" else pure (head a)),
+  ("tail", nilop $ if null a then throwError "Can't take the tail of an empty list" else pure (makeList $ tail a)),
+  ("init", nilop $ if null a then throwError "Can't take the init of an empty list" else pure (makeList $ init a)),
+  ("last", nilop $ if null a then throwError "Can't take the last of an empty list" else pure (last a)),
+  ("empty", nilop $ pure (makeBool $ null a)),
+  ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
+  (":", unop $ \b -> pure $ makeList (b:a))
+  ]
 
 prim :: [String] -> (Map String Expr -> IOThrowsError Expr) -> Expr
 prim args f = EPrim (map reqParam args) $ \env -> (,env) <$> (f =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
 
-primUnop :: (Prim -> IOThrowsError Expr) -> Expr
+nilop ret = prim [] (const ret)
+
+unop :: (Expr -> IOThrowsError Expr) -> Expr
+unop f = prim ["b"] $ \args -> let b = args!"b" in f b
+
+primUnop :: (PrimData -> IOThrowsError Expr) -> Expr
 primUnop f = prim ["b"] $ \args -> let EObj (PrimObj prim _) = args!"b" in f prim
 
 --TODO: fix this horrible naming scheme
 
-intOnNum :: (Integer -> Integer) -> (Double -> Double) -> (Prim -> IOThrowsError Expr)
+intOnNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 intOnNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
 intOnNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
 intOnNum onInt onFloat _ = throwError "Invalid argument to intOnNum"
 
-intOnInt :: (Integer -> Integer) -> (Prim -> IOThrowsError Expr)
+intOnInt :: (Integer -> Integer) -> (PrimData -> IOThrowsError Expr)
 intOnInt onInt (PInt b) = pure . makeInt $ onInt b
 intOnInt onInt _ = throwError "Invalid argument to intOnInt"
 
 --TODO: will the user EVER provide 2 different functions for this?
-floatOnNum :: (Double -> Double) -> (Double -> Double) -> (Prim -> IOThrowsError Expr)
+floatOnNum :: (Double -> Double) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 floatOnNum onInt onFloat (PInt b) = pure . makeFloat $ onInt (fromInteger b)
 floatOnNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
 floatOnNum onInt onFloat _ = throwError "Invalid argument to floatOnNum"
 
-intOnNumToBool :: (Integer -> Bool) -> (Double -> Bool) -> (Prim -> IOThrowsError Expr)
+intOnNumToBool :: (Integer -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
 intOnNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt b
 intOnNumToBool onInt onFloat (PFloat b) = pure . makeBool $ onFloat b
 intOnNumToBool onInt onFloat _ = throwError "Invalid argument to intOnNumToBool"
 
 --TODO: will the user EVER provide 2 different functions for this?
-floatOnNumToBool :: (Double -> Bool) -> (Double -> Bool) -> (Prim -> IOThrowsError Expr)
+floatOnNumToBool :: (Double -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
 floatOnNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt (fromInteger b)
 floatOnNumToBool onInt onFloat (PFloat b) = pure . makeBool $ onFloat b
 floatOnNumToBool onInt onFloat _ = throwError "Invalid argument to floatOnNumToBool"
 
-onBool :: (Bool -> Bool) -> (Prim -> IOThrowsError Expr)
+onBool :: (Bool -> Bool) -> (PrimData -> IOThrowsError Expr)
 onBool f (PBool b) = pure . makeBool $ f b
 onBool f _ = throwError "Invalid argument to onBool"

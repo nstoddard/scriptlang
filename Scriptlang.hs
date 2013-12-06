@@ -3,38 +3,25 @@
 module Scriptlang where
 
 {- TODO
+  To get working:
+    map f xs -> if (xs.empty) [] else f (xs.head) : map f xs.tail
+      (need parens around a lot of stuff)
+    map (a => a + 2) [1,2,3]
+    a => a + 2
+  To implement:
+    Providing only part of a function's argument at a time, and substituting the rest later
+    Function overloading
+    Types and pattern matching
+    Generators
+    Syntax for specifying chars with a hex code
+    Line numbers for errors
+
   Improve syntax errors:
     When typing "5 /*" it should say it expects the end of the comment
     When typing "5 /" it should say it expects the other "/" to complete the single-line comment
-  Add syntax for specifying chars with a hex code
   When you define a function with 2 arguments of the same name, it should say so instead of giving the message "Can't reassign identifier". That message should never appear, ever.
-  When doing "5.test", it says "identifier not found" when it should say "object 5 has no such field test"
-  "If" doesn't work since it has higher precedence than operators - you can't do "if cond then a*b"; you need parens around (a*b)
-  You probably shouldn't be able to do "new {x=5}.x"; it should probably parse as "new ({x=5}.x)"
-  Are you allowed to provide zero arguments to a function that takes only optional arguments?
-    I absolutely need to support this.
-    Perhaps the syntax for defining a function should use "=>" instead of "=". So you'd have:
-      pi = 3.14
-    but
-      ls -> exec 'ls'
-      double n -> n*2
-    what about:
-      double n = n*2
-    The latter signifies that it's a pure function, so its results can be cached. Nah, I'll never get around to implementing caching. I should allow the syntax anyway; it's more consistent and it looks nice.
-    But anonymous functions already use =>, so it's ambiguous whether "f n => n*2" is an anonymous function of 2 arguments or a named function of 1 argument
-    f = n => n*2
-    f n -> n*2
-    f n -> {
-      println n
-      f (n-1)
-    }
-  TODO: overloading
-  TODO: use ByName access type for some builtin functions
   TODO: do by-name optional parameters make sense?
   TODO: entering multiline expressions on the REPL
-  Add function overloading
-  Add types and pattern matching
-  Add generators
   Verify that pipes work and are actually useful
   Add glob and regex support
     Glob syntax:
