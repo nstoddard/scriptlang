@@ -36,6 +36,10 @@ type Value = (Expr,AccessType)
 type Env = Map String Value
 data EnvStack = EnvStack [IORef Env]
 
+getEnv :: EnvStack -> IO [Env]
+getEnv (EnvStack []) = pure []
+getEnv (EnvStack (env:envs)) = (:) <$> get env <*> getEnv (EnvStack envs)
+
 envStackFromEnv :: Env -> IO EnvStack
 envStackFromEnv env = (EnvStack . (:[])) <$> newIORef env
 
@@ -97,11 +101,22 @@ data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EPrim [Param] (EnvStack -> IOThrowsError (Expr,EnvStack)) | EFn [Param] Expr |
-  EDef String Expr | EVarDef String Expr | EAssign Expr Expr |
+  EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EClosure [Param] Expr EnvStack |
   EIf Expr Expr Expr
+
+getVar :: Expr -> Expr
+getVar (EId id) = EGetVar id
+getVar (EMemberAccess expr id) = EMemberAccessGetVar expr id
+getVar x = x
+
+getExprEnv :: Expr -> IOThrowsError EnvStack
+getExprEnv (EObj (Obj env)) = lift $ envStackFromEnv env
+getExprEnv (EObj (PrimObj _ env)) = lift $ envStackFromEnv env
+getExprEnv (EClosure _ _ env) = pure env
+getExprEnv x = throwError $ "No environment for: " ++ show x
 
 data AccessType = ByVal | ByName deriving (Eq,Show)
 
@@ -168,6 +183,9 @@ instance Pretty Expr where
   pretty (EObj obj) = pretty obj
   pretty (EClosure {}) = pretty "<closure>"
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
+  pretty (EVar _) = pretty "<var>"
+  pretty (EGetVar id) = pretty "<getVar>"
+  pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x

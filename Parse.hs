@@ -30,16 +30,11 @@ import Util
 import Expr
 import Eval
 
-parseStatement = parseExec <|> parseVarDef <|> try parseDef <|> tryParseAssign
-
-parseExec = do
-  symbol "/"
-  str <- some (noneOf separators)
-  pure (EFnApp (eId "execRaw") [Arg $ makeString str])
+parseStatement = parseVarDef <|> try parseDef <|> tryParseAssign
 
 tryParseAssign = do
   expr <- parseExpr
-  (EAssign expr <$> (symbol "<-" *> parseExpr)) <|> pure expr
+  (EAssign (getVar expr) <$> (symbol "<-" *> parseExpr)) <|> pure expr
 
 identifier' = do
   accessType <- (symbol "~" *> pure ByName) <|> pure ByVal
@@ -74,11 +69,17 @@ parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (wholeSymbol ":" *>
 parseRepParam = RepParam <$> identifier' <* symbol "*"
 parseReqParam = ReqParam <$> identifier'
 
-parseExpr = parsePipes
+parseExpr = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
 parseNonIf = buildExpressionParser opTable parseWith
 parseNonWithExpr = try parseFn <|> parseFnApp
 parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
+
+parseExec = do
+  symbol "/"
+  str <- some (noneOf separators)
+  pure (EFnApp (eId "execRaw") [Arg $ makeString str])
+
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
@@ -189,7 +190,6 @@ operator startChar rassoc = (do
   ) <?> "operator"
 
 
---- Non-language-specific parsing stuff ---
 
 parseInt = makeInt <$> integer
 parseFloat = makeFloat <$> float

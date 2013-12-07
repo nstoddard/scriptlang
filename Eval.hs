@@ -28,30 +28,46 @@ import Util
 import Expr
 
 
-evalID (EId (id,accessType)) notFoundMsg env = do
+evalID derefVars (EId (id,accessType)) notFoundMsg env = do
   val <- envLookup id env
   case val of
     Nothing -> throwError $ notFoundMsg ++ id
     Just (closure@(EClosure [] _ _), accessType2) -> eval closure env --TODO: what do we do with the access type here?
     Just (prim@(EPrim [] fn), accessType2) -> eval prim env --TODO: what do we do with the access type here?
-    Just (val, accessType2) -> case (accessType,accessType2) of
-      (ByVal, ByVal) -> pure (val,env)
-      (ByVal, ByName) -> eval val env
-      (ByName, ByName) -> pure (val,env)
-      (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
+    Just (val, accessType2) -> do
+      (val,env) <- case (accessType,accessType2) of
+        (ByVal, ByVal) -> pure (val,env)
+        (ByVal, ByName) -> eval val env
+        (ByName, ByName) -> pure (val,env)
+        (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
+      if derefVars then (case val of
+        EVar var -> (,env) <$> lift (get var)
+        val -> pure (val,env))
+      else pure (val,env)
 
 
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 eval EVoid env = pure (EVoid, env)
-eval id@(EId {}) env = evalID id "Identifier not found: " env
+eval id@(EId {}) env = evalID True id "Identifier not found: " env
+eval (EGetVar var) env = evalID False (EId var) "Variable not found: " env
 eval (EMemberAccess obj id) env = do
   obj <- eval obj env
   case obj of
     (EObj (Obj oenv),_) -> do
-      (val,_) <- evalID (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID True (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (EObj (PrimObj prim oenv),_) -> do
-      (val,_) <- evalID (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID True (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      pure (val, env)
+    (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
+eval (EMemberAccessGetVar obj id) env = do
+  obj <- eval obj env
+  case obj of
+    (EObj (Obj oenv),_) -> do
+      (val,_) <- evalID False (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      pure (val, env)
+    (EObj (PrimObj prim oenv),_) -> do
+      (val,_) <- evalID False (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
 eval (EDef id val) env = do
@@ -61,7 +77,7 @@ eval (EDef id val) env = do
       (val',_) <- eval val env
       envDefine id (val',ByVal) env
       pure (EVoid, env)
-    Just _ -> throwError ("Can't reassign variable " ++ id)
+    Just _ -> throwError ("Can't reassign identifier " ++ id)
 eval (EObj obj) env = pure (EObj obj, env)
 eval (EBlock []) env = pure (EVoid, env)
 eval (EBlock exprs) env = do
@@ -118,6 +134,21 @@ eval (EIf cond t f) env = do
     EObj (PrimObj (PBool True) _) -> ((,env) . fst) <$> eval t env
     EObj (PrimObj (PBool False) _) -> ((,env) . fst) <$> eval f env
     c -> throwError $ "Invalid condition for if: " ++ show c
+eval (EVarDef id val) env = do
+  oldVal <- envLookup id env
+  case oldVal of
+    Nothing -> do
+      (val',_) <- eval val env
+      val'' <- lift $ EVar <$> newIORef val'
+      envDefine id (val'',ByVal) env
+      pure (EVoid, env)
+    Just _ -> throwError ("Can't reassign identifier " ++ id)
+eval (EAssign var val) env = do
+  (var,_) <- eval var env --TODO: don't replace vars with their value!
+  case var of
+    EVar var -> lift $ var $= val
+    x -> throwError $ "Not a variable: " ++ show x
+  pure (EVoid, env)
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
@@ -177,9 +208,10 @@ startEnv = envStackFromList [
       (EObj (PrimObj (PString proc) _)) -> do
         lift $ system proc
         pure (EVoid, env)
-      _ -> throwError "Invalid argument to execRaw")
+      _ -> throwError "Invalid argument to execRaw"),
+  ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure EVoid), --TODO: THIS DOESN'T WORK
+  ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid)
   ]
-
 
 makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
   ("+", primUnop $ intOnNum (a+) (fromInteger a+)),
@@ -218,6 +250,8 @@ makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
   ("||", primUnop $ onBool (a||))
   ]
 makeString a = EObj $ PrimObj (PString a) $ envFromList [
+  ("empty", nilop $ pure (makeBool $ null a)),
+  ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("apply", primUnop $ onInt (\i -> makeChar <$> index a i))
   ]
 makeList a = EObj $ PrimObj (PList a) $ envFromList [
@@ -231,6 +265,8 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("apply", primUnop $ onInt (index a))
   ]
 makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
+  ("empty", nilop $ pure (makeBool $ null a)),
+  ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("apply", primUnop $ onInt (index a))
   ]
 
@@ -241,6 +277,11 @@ prim :: [String] -> (Map String Expr -> IOThrowsError Expr) -> Expr
 prim args f = EPrim (map reqParam args) $ \env -> (,env) <$> (f =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
 
 nilop ret = prim [] (const ret)
+
+prim' :: [String] -> (Map String Expr -> EnvStack -> IOThrowsError Expr) -> Expr
+prim' args f = EPrim (map reqParam args) $ \env -> (,env) <$> (flip f env =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
+
+nilop' ret = prim' [] (\map env -> ret env)
 
 unop :: (Expr -> IOThrowsError Expr) -> Expr
 unop f = prim ["b"] $ \args -> let b = args!"b" in f b
