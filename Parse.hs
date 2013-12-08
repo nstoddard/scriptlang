@@ -30,11 +30,15 @@ import Util
 import Expr
 import Eval
 
-parseStatement = parseVarDef <|> try parseDef <|> tryParseAssign
-
 tryParseAssign = do
-  expr <- parseExpr
-  (EAssign (getVar expr) <$> (symbol "<-" *> parseExpr)) <|> pure expr
+  expr <- parseNonStatement
+  let
+    parseAssign = do
+      val <-  symbol "<-" *> parseExpr
+      case getVar expr of
+        Just var -> pure $ EAssign var val
+        Nothing -> mzero
+  parseAssign <|> pure expr
 
 identifier' = do
   accessType <- (symbol "~" *> pure ByName) <|> pure ByVal
@@ -60,8 +64,8 @@ parseVarDef = do
 separators = ";,\n"
 separator = lexeme (oneOf separators)
 parseBlock = EBlock <$> block
-block = symbol "{" *> many separator *> sepEndBy parseStatement (some separator) <* symbol "}"
-parseCompound = many separator *> sepEndBy parseStatement (some separator)
+block = symbol "{" *> many separator *> sepEndBy parseExpr (some separator) <* symbol "}"
+parseCompound = many separator *> sepEndBy parseExpr (some separator)
 
 
 parseParam = asum [parseOptParam, try parseRepParam, parseReqParam]
@@ -69,7 +73,10 @@ parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (wholeSymbol ":" *>
 parseRepParam = RepParam <$> identifier' <* symbol "*"
 parseReqParam = ReqParam <$> identifier'
 
-parseExpr = parseExec <|> parsePipes
+
+parseExpr = parseVarDef <|> try parseDef <|> tryParseAssign
+
+parseNonStatement = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
 parseNonIf = buildExpressionParser opTable parseWith
 parseNonWithExpr = try parseFn <|> parseFnApp
@@ -93,11 +100,10 @@ parsePipes = do
     f obj (id,args) = EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
 
---parseParens = between (symbol "(") (symbol ")") parseExpr
-parseList = makeList <$> (symbol "[" *> sepEndBy parseExpr separator <* symbol "]")
+parseList = makeList' <$> (symbol "[" *> sepEndBy parseExpr separator <* symbol "]")
 parseTuple = do
   first <- symbol "(" *> parseExpr
-  (symbol ")" *> pure first) <|> (makeTuple . (first:) <$> (separator *> sepEndBy parseExpr separator <* symbol ")"))
+  (symbol ")" *> pure first) <|> (makeTuple' . (first:) <$> (separator *> sepEndBy parseExpr separator <* symbol ")"))
 
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do

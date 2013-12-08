@@ -70,14 +70,7 @@ eval (EMemberAccessGetVar obj id) env = do
       (val,_) <- evalID False (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
-eval (EDef id val) env = do
-  oldVal <- envLookup id env
-  case oldVal of
-    Nothing -> do
-      (val',_) <- eval val env
-      envDefine id (val',ByVal) env
-      pure (EVoid, env)
-    Just _ -> throwError ("Can't reassign identifier " ++ id)
+eval (EDef id val) env = envDefine id env $ (,ByVal) . fst <$> eval val env
 eval (EObj obj) env = pure (EObj obj, env)
 eval (EBlock []) env = pure (EVoid, env)
 eval (EBlock exprs) env = do
@@ -91,13 +84,13 @@ eval (EFnApp fn args) env = do
     EClosure params body closure -> do
       args' <- matchParams params args env
       bodyEnv <- envNewScope closure
-      forM_ args' $ \(name,accessType,val) -> envDefine name (val,accessType) bodyEnv
+      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure (val,accessType))
       (res,_) <- eval body bodyEnv
       pure (res,env)
     EPrim params fn -> do
       args' <- matchParams params args env
       bodyEnv <- envNewScope =<< lift newEnvStack
-      forM_ args' $ \(name,accessType,val) -> envDefine name (val,accessType) bodyEnv
+      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure (val,accessType))
       (res,_) <- fn bodyEnv
       pure (res,env)
     EObj obj -> case args of
@@ -105,13 +98,16 @@ eval (EFnApp fn args) env = do
         val <- envLookup id env
         case val of
           Just val -> evalApply obj args' env
-          Nothing -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
+          Nothing -> case args of
+            [] -> eval (EMemberAccess (EObj obj) id) env
+            args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
     x -> throwError ("Invalid function: " ++ show x)
 eval (EPrim [] fn) env = do
   bodyEnv <- envNewScope =<< lift newEnvStack
   (res,_) <- fn bodyEnv
   pure (res,env)
+eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case
 eval (EClosure [] body closure) env = do
   bodyEnv <- envNewScope closure
   (res,_) <- eval body bodyEnv
@@ -134,21 +130,16 @@ eval (EIf cond t f) env = do
     EObj (PrimObj (PBool True) _) -> ((,env) . fst) <$> eval t env
     EObj (PrimObj (PBool False) _) -> ((,env) . fst) <$> eval f env
     c -> throwError $ "Invalid condition for if: " ++ show c
-eval (EVarDef id val) env = do
-  oldVal <- envLookup id env
-  case oldVal of
-    Nothing -> do
-      (val',_) <- eval val env
-      val'' <- lift $ EVar <$> newIORef val'
-      envDefine id (val'',ByVal) env
-      pure (EVoid, env)
-    Just _ -> throwError ("Can't reassign identifier " ++ id)
+eval (EVarDef id val) env = envDefine id env $ do
+  (val,_) <- eval val env
+  lift $ (,ByVal) . EVar <$> newIORef val
 eval (EAssign var val) env = do
-  (var,_) <- eval var env --TODO: don't replace vars with their value!
+  (var,_) <- eval var env
+  (val',_) <- eval val env
   case var of
-    EVar var -> lift $ var $= val
+    EVar var -> lift $ var $= val'
     x -> throwError $ "Not a variable: " ++ show x
-  pure (EVoid, env)
+  pure (val', env)
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
@@ -156,7 +147,10 @@ replEval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 replEval (EDef id val) env = do
   (val',_) <- eval val env
   envRedefine id (val',ByVal) env
-  pure (EVoid, env)
+replEval (EVarDef id val) env = do
+  (val',_) <- eval val env
+  val'' <- lift $ EVar <$> newIORef val'
+  envRedefine id (val'',ByVal) env
 replEval expr env = eval expr env
 
 
@@ -188,7 +182,7 @@ envLookup' name env = fst <$> eval (EId (name,ByVal)) env
 
 startEnv :: IO EnvStack
 startEnv = envStackFromList [
-  ("-", primUnop $ intOnNum negate negate),
+  ("-", primUnop $ onNum negate negate),
   ("!", primUnop $ onBool not),
   ("exit", nilop (lift exitSuccess)),
   ("exec", EPrim [reqParam "proc", repParam "args"] $ \env -> do
@@ -214,35 +208,39 @@ startEnv = envStackFromList [
   ]
 
 makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
-  ("+", primUnop $ intOnNum (a+) (fromInteger a+)),
-  ("-", primUnop $ intOnNum (a-) (fromInteger a-)),
-  ("*", primUnop $ intOnNum (a*) (fromInteger a*)),
-  ("/", primUnop $ floatOnNum (fromInteger a/) (fromInteger a/)),
-  ("%", primUnop $ intOnNum (mod a) (fmod (fromInteger a))),
-  ("^", primUnop $ intOnNum (a^) (fromInteger a**)),
-  ("div", primUnop $ intOnInt (a `div`)),
-  ("gcd", primUnop $ intOnInt (a `gcd`)),
-  ("lcm", primUnop $ intOnInt (a `lcm`)),
-  (">", primUnop $ intOnNumToBool (a>) (fromInteger a>)),
-  ("<", primUnop $ intOnNumToBool (a<) (fromInteger a<)),
-  (">=", primUnop $ intOnNumToBool (a>=) (fromInteger a>=)),
-  ("<=", primUnop $ intOnNumToBool (a<=) (fromInteger a<=)),
-  ("==", primUnop $ intOnNumToBool (a==) (fromInteger a==)),
-  ("!=", primUnop $ intOnNumToBool (a/=) (fromInteger a/=))
+  ("+", primUnop $ onNum (a+) (fromInteger a+)),
+  ("-", primUnop $ onNum (a-) (fromInteger a-)),
+  ("*", primUnop $ onNum (a*) (fromInteger a*)),
+  ("/", primUnop $ onFloat (fromInteger a/)),
+  ("%", primUnop $ onNum (mod a) (fmod (fromInteger a))),
+  ("^", primUnop $ onNum (a^) (fromInteger a**)),
+  ("div", primUnop $ onInt (a `div`)),
+  ("gcd", primUnop $ onInt (a `gcd`)),
+  ("lcm", primUnop $ onInt (a `lcm`)),
+  (">", primUnop $ onNumToBool (a>) (fromInteger a>)),
+  ("<", primUnop $ onNumToBool (a<) (fromInteger a<)),
+  (">=", primUnop $ onNumToBool (a>=) (fromInteger a>=)),
+  ("<=", primUnop $ onNumToBool (a<=) (fromInteger a<=)),
+  ("==", primUnop $ onNumToBool (a==) (fromInteger a==)),
+  ("!=", primUnop $ onNumToBool (a/=) (fromInteger a/=)),
+  ("abs", nilop $ pure (makeInt $ abs a)),
+  ("sign", nilop $ pure (makeInt $ signum a))
   ]
 makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
-  ("+", primUnop $ floatOnNum (a+) (a+)),
-  ("-", primUnop $ floatOnNum (a-) (a-)),
-  ("*", primUnop $ floatOnNum (a*) (a*)),
-  ("/", primUnop $ floatOnNum (a/) (a/)),
-  ("%", primUnop $ floatOnNum (fmod a) (fmod a)),
-  ("^", primUnop $ floatOnNum (a**) (a**)),
-  (">", primUnop $ floatOnNumToBool (a>) (a>)),
-  ("<", primUnop $ floatOnNumToBool (a<) (a<)),
-  (">=", primUnop $ floatOnNumToBool (a>=) (a>=)),
-  ("<=", primUnop $ floatOnNumToBool (a<=) (a<=)),
-  ("==", primUnop $ floatOnNumToBool (a==) (a==)),
-  ("!=", primUnop $ floatOnNumToBool (a/=) (a/=))
+  ("+", primUnop $ onFloat (a+)),
+  ("-", primUnop $ onFloat (a-)),
+  ("*", primUnop $ onFloat (a*)),
+  ("/", primUnop $ onFloat (a/)),
+  ("%", primUnop $ onFloat (fmod a)),
+  ("^", primUnop $ onFloat (a**)),
+  (">", primUnop $ onFloatToBool (a>)),
+  ("<", primUnop $ onFloatToBool (a<)),
+  (">=", primUnop $ onFloatToBool (a>=)),
+  ("<=", primUnop $ onFloatToBool (a<=)),
+  ("==", primUnop $ onFloatToBool (a==)),
+  ("!=", primUnop $ onFloatToBool (a/=)),
+  ("abs", nilop $ pure (makeFloat $ abs a)),
+  ("sign", nilop $ pure (makeFloat $ signum a))
   ]
 makeChar a = EObj $ PrimObj (PChar a) $ envFromList []
 makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
@@ -252,7 +250,7 @@ makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
 makeString a = EObj $ PrimObj (PString a) $ envFromList [
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
-  ("apply", primUnop $ onInt (\i -> makeChar <$> index a i))
+  ("apply", primUnop $ onInt' (\i -> makeChar <$> index a i))
   ]
 makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("head", nilop $ if null a then throwError "Can't take the head of an empty list" else pure (head a)),
@@ -262,64 +260,75 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("::", unop $ \b -> pure $ makeList (b:a)),
-  ("apply", primUnop $ onInt (index a))
+  ("apply", primUnop $ onInt' (index a))
   ]
 makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
-  ("apply", primUnop $ onInt (index a))
+  ("apply", primUnop $ onInt' (index a))
   ]
+
+--These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
+makeList' = EFnApp makeListPrim . map Arg
+makeTuple' = EFnApp makeTuplePrim . map Arg
+
+makeListPrim = EPrim [repParam "xs"] (\env -> (,env) . makeList . fromEList <$> envLookup' "xs" env)
+makeTuplePrim = EPrim [repParam "xs"] (\env -> (,env) . makeTuple . fromEList <$> envLookup' "xs" env)
 
 index :: [a] -> Integer -> IOThrowsError a
 index xs i = if i >= 0 && i < genericLength xs then pure (xs `genericIndex` i) else throwError "Invalid index!"
 
+
+
 prim :: [String] -> (Map String Expr -> IOThrowsError Expr) -> Expr
 prim args f = EPrim (map reqParam args) $ \env -> (,env) <$> (f =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
-
-nilop ret = prim [] (const ret)
 
 prim' :: [String] -> (Map String Expr -> EnvStack -> IOThrowsError Expr) -> Expr
 prim' args f = EPrim (map reqParam args) $ \env -> (,env) <$> (flip f env =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
 
+nilop :: IOThrowsError Expr -> Expr
+nilop ret = prim [] (const ret)
+
+nilop' :: (EnvStack -> IOThrowsError Expr) -> Expr
 nilop' ret = prim' [] (\map env -> ret env)
 
 unop :: (Expr -> IOThrowsError Expr) -> Expr
-unop f = prim ["b"] $ \args -> let b = args!"b" in f b
+unop f = prim ["x"] $ \args -> f (args!"x")
+
+binop :: (Expr -> Expr -> IOThrowsError Expr) -> Expr
+binop f = prim ["x", "y"] $ \args -> f (args!"x") (args!"y")
 
 primUnop :: (PrimData -> IOThrowsError Expr) -> Expr
-primUnop f = prim ["b"] $ \args -> let EObj (PrimObj prim _) = args!"b" in f prim
+primUnop f = prim ["x"] $ \args -> let EObj (PrimObj prim _) = args!"x" in f prim
 
---TODO: fix this horrible naming scheme
 
-intOnNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
-intOnNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
-intOnNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
-intOnNum onInt onFloat _ = throwError "Invalid argument to intOnNum"
+onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
+onNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
+onNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
+onNum onInt onFloat _ = throwError "Invalid argument to onNum"
 
-intOnInt :: (Integer -> Integer) -> (PrimData -> IOThrowsError Expr)
-intOnInt onInt (PInt b) = pure . makeInt $ onInt b
-intOnInt onInt _ = throwError "Invalid argument to intOnInt"
+onInt :: (Integer -> Integer) -> (PrimData -> IOThrowsError Expr)
+onInt onInt (PInt b) = pure . makeInt $ onInt b
+onInt onInt _ = throwError "Invalid argument to onInt"
 
-onInt :: (Integer -> IOThrowsError Expr) -> (PrimData -> IOThrowsError Expr)
-onInt f (PInt b) = f b
-onInt f _ = throwError "Invalid argument to onInt"
+onInt' :: (Integer -> IOThrowsError Expr) -> (PrimData -> IOThrowsError Expr)
+onInt' f (PInt b) = f b
+onInt' f _ = throwError "Invalid argument to onInt'"
 
---TODO: will the user EVER provide 2 different functions for this?
-floatOnNum :: (Double -> Double) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
-floatOnNum onInt onFloat (PInt b) = pure . makeFloat $ onInt (fromInteger b)
-floatOnNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
-floatOnNum onInt onFloat _ = throwError "Invalid argument to floatOnNum"
+onFloat :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
+onFloat onFloat (PInt b) = pure . makeFloat $ onFloat (fromInteger b)
+onFloat onFloat (PFloat b) = pure . makeFloat $ onFloat b
+onFloat onFloat _ = throwError "Invalid argument to onFloat"
 
-intOnNumToBool :: (Integer -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
-intOnNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt b
-intOnNumToBool onInt onFloat (PFloat b) = pure . makeBool $ onFloat b
-intOnNumToBool onInt onFloat _ = throwError "Invalid argument to intOnNumToBool"
+onNumToBool :: (Integer -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
+onNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt b
+onNumToBool onInt onFloat (PFloat b) = pure . makeBool $ onFloat b
+onNumToBool onInt onFloat _ = throwError "Invalid argument to onNumToBool"
 
---TODO: will the user EVER provide 2 different functions for this?
-floatOnNumToBool :: (Double -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
-floatOnNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt (fromInteger b)
-floatOnNumToBool onInt onFloat (PFloat b) = pure . makeBool $ onFloat b
-floatOnNumToBool onInt onFloat _ = throwError "Invalid argument to floatOnNumToBool"
+onFloatToBool :: (Double -> Bool)  -> (PrimData -> IOThrowsError Expr)
+onFloatToBool onFloat (PInt b) = pure . makeBool $ onFloat (fromInteger b)
+onFloatToBool onFloat (PFloat b) = pure . makeBool $ onFloat b
+onFloatToBool onFloat _ = throwError "Invalid argument to onFloatToBool"
 
 onBool :: (Bool -> Bool) -> (PrimData -> IOThrowsError Expr)
 onBool f (PBool b) = pure . makeBool $ f b

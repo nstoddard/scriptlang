@@ -73,17 +73,30 @@ envLookup id (EnvStack (x:xs)) = do
     Nothing -> envLookup id (EnvStack xs)
     Just res -> pure (Just res)
 
-envDefine :: String -> Value -> EnvStack -> IOThrowsError ()
+{-envDefine :: String -> Value -> EnvStack -> IOThrowsError ()
 envDefine id val env@(EnvStack (x:xs)) = do
   x' <- lift $ get x
   case M.lookup id x' of
     Nothing -> lift $ x $= M.insert id val x'
     Just _ -> throwError $ "Can't reassign identifier: " ++ id
+-}
 
-envRedefine :: String -> Value -> EnvStack -> IOThrowsError ()
+--The third parameter isn't just a Value because it should only be executed if there isn't an error.
+envDefine :: String -> EnvStack -> IOThrowsError Value -> IOThrowsError (Expr,EnvStack)
+envDefine id env@(EnvStack (x:xs)) f = do
+  x' <- lift $ get x
+  case M.lookup id x' of
+    Nothing -> do
+      val <- f
+      lift $ x $= M.insert id val x'
+      pure (fst val, env)
+    Just _ -> throwError $ "Can't reassign identifier: " ++ id
+
+envRedefine :: String -> Value -> EnvStack -> IOThrowsError (Expr,EnvStack)
 envRedefine id val env@(EnvStack (x:xs)) = do
   x' <- lift $ get x
   lift $ x $= M.insert id val x'
+  pure (fst val, env)
 
 envRemoveIORefs :: EnvStack -> IO [Map String Value]
 envRemoveIORefs (EnvStack xs) = mapM get xs
@@ -107,10 +120,14 @@ data Expr =
   EClosure [Param] Expr EnvStack |
   EIf Expr Expr Expr
 
-getVar :: Expr -> Expr
-getVar (EId id) = EGetVar id
-getVar (EMemberAccess expr id) = EMemberAccessGetVar expr id
-getVar x = x
+fromEList :: Expr -> [Expr]
+fromEList (EObj (PrimObj (PList xs) _)) = xs
+fromEList xs = error $ "Internal error: not a list: " ++ show xs
+
+getVar :: Expr -> Maybe Expr
+getVar (EId id) = pure $ EGetVar id
+getVar (EMemberAccess expr id) = pure $ EMemberAccessGetVar expr id
+getVar _ = Nothing
 
 getExprEnv :: Expr -> IOThrowsError EnvStack
 getExprEnv (EObj (Obj env)) = lift $ envStackFromEnv env

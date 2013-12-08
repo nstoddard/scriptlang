@@ -3,11 +3,12 @@
 module Scriptlang where
 
 {- Implementation notes
-  Statments and expressions are parsed separately, but they're both considered expressions by the evaluator. The reason for this is that EBlock must return a value, but it contains statements. This could be worked around, but it's easier to treat expressions and statements the same for now.
+  Statments and expressions are parsed separately, but they're both considered expressions by the evaluator. The reason for this is that EBlock must return a value, but it contains statements. This could be worked around, but it's easier to treat expressions and statements the same for now. I'll fix it later.
 -}
 
 {- TODO
   To implement:
+    Map, filter, etc should be methods on lists, not functions
     Providing only some of a function's arguments at a time, and substituting the rest later
     Function overloading
     Types and pattern matching
@@ -15,34 +16,31 @@ module Scriptlang where
     Syntax for specifying chars with a hex code
     Line numbers for errors
     I/O
+      Should it be "5 println" or "println 5"?
+        It should probably be "println 5", because it shouldn't be possible for objects to override println. However, they should be able to override toString, but toString should be implemented by default in all objects and should just print "<object>" or something. We certainly need a way to create default environments for objects - they shouldn't begin with an empty environment.
+      toString
     Extension methods
     Finish matchParams
     Add a method to be called when a method isn't defined
     Data declarations
-    toString
-    Maps
-    Glob syntax
+    Maps - perhaps I should hold off on implementing this until I've implemented pattern matching - it seems that pattern matching and maps could be combined to simplify the language - this is one thing that I find irritating about Scala; it's sometimes hard to decide which one to use
+    Glob syntax and regexes
     Command history
     Function composition (f.o g, perhaps); treating functions as objects
     Calling an object as though it's a function?
     Cloning?
     Unit testing
     Interfacing between scripts - this should be fairly easy
+    Reflection - checking which fields, methods, etc an object supportss
+    Imports
   Allow "-" prefix on numbers again, but also keep it as an operator. That way, you'll be able to do "id -3" and have it return "-3" instead of treating it as "id.- 3". However, it'll still be impossible to do "id -n", but that's okay. TODO: check whether "-3.abs" is parsed as "(-3).abs" or "-(3.abs)".
   TODO: treat functions as objects with an "apply" method and "o" as a composition operator.
 
-  Improve syntax errors:
-    When typing "5 /*" it should say it expects the end of the comment
-    When typing "5 /" it should say it expects the other "/" to complete the single-line comment
-  When you define a function with 2 arguments of the same name, it should say so instead of giving the message "Can't reassign identifier". That message should never appear, ever.
-  TODO: do by-name optional parameters make sense?
-  Add glob and regex support
-    Glob syntax:
-      * - match 0 or more unknown chars
-      \ - escape char - next char is treated as a normal char
-      We could add more glob syntax than this, but it's probably better to use a regex for anything more complicated
+  Improve syntax errors
+  When you define a function with 2 arguments of the same name, it should say so instead of giving the message "Can't reassign identifier".
+  Do by-name optional parameters make sense?
   Avoid using "system"; always use "rawSystem"
-  TODO: disallow ~ on everything but parameters - zero-argument functions have replaced them
+  Disallow ~ on everything but parameters - zero-argument functions have replaced them
 -}
 
 import Data.List
@@ -85,7 +83,7 @@ main = do
 
 repl env = do
   input <- replGetInput Nothing
-  expr_ <- runErrorT (parseInput "" input parseStatement)
+  expr_ <- runErrorT (parseInput "" input parseExpr)
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
