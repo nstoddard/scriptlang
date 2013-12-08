@@ -6,7 +6,8 @@ fac n -> if (n==0) 1 else n * fac (n-1)
 
 
 ls -> exec 'ls'
-clear -> /clear //This uses /clear rather than "exec 'clear'" because clear is a builtin shell command, not a program
+clear -> execRaw 'clear' //This must use execRaw rather than "exec because clear is a builtin shell command, not a program
+
 
 doTwice ~x -> {
   x
@@ -21,7 +22,12 @@ filter f xs -> if xs.empty []
 id x -> x
 
 
-color r g b -> new {r=r, g=g, b=b}
+color r g b ?a=1 -> new {r=r, g=g, b=b, a=a}
 
+list xs* -> xs
+
+opt ?a=0 ?b=1 ?c=2 -> (a,b,c)
+
+emptyTest -> 5
 
 mkAccum n -> {var s <- n; i => s <- s+i}

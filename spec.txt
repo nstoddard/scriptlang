@@ -1,3 +1,5 @@
+This is hopelessly out of date!
+
 Characteristics:
   Dynamically typed
   Intended for scripting and as a replacement for the shell
@@ -33,7 +35,7 @@ Syntax:
   Functions:
     f x = x + 1
       Translated to "f = x => x + 1"
-    f ?x:2 = 5
+    f ?x=2 = 5
       Optional parameter; called like "f 10" or just "f"
     f x? = !x
       Flag; called like "f 'x"
@@ -168,3 +170,11 @@ TODO: add sections, tuple sections
 TODO: disallow "=" syntax for functions. 
 
 It should be possible to use either "=" or "->" for data declarations. "data Empty = {...}" and "data Empty -> {...}" are very different. However, the second one looks a bit strange, so I'd like a better syntax for it.
+
+
+Function parsing:
+  f a b -> FnApp (Id f) [a,b]
+  x -> FnApp (Id f) []
+This way, you should never come across a lone identifier in the parse tree, vastly simplifying evaluation.
+Function evaluation:
+  

@@ -2,10 +2,6 @@
 
 module Scriptlang where
 
-{- Implementation notes
-  Statments and expressions are parsed separately, but they're both considered expressions by the evaluator. The reason for this is that EBlock must return a value, but it contains statements. This could be worked around, but it's easier to treat expressions and statements the same for now. I'll fix it later.
--}
-
 {- TODO
   To implement:
     Map, filter, etc should be methods on lists, not functions
@@ -33,14 +29,14 @@ module Scriptlang where
     Interfacing between scripts - this should be fairly easy
     Reflection - checking which fields, methods, etc an object supportss
     Imports
-  Allow "-" prefix on numbers again, but also keep it as an operator. That way, you'll be able to do "id -3" and have it return "-3" instead of treating it as "id.- 3". However, it'll still be impossible to do "id -n", but that's okay. TODO: check whether "-3.abs" is parsed as "(-3).abs" or "-(3.abs)".
-  TODO: treat functions as objects with an "apply" method and "o" as a composition operator.
+    Treat functions as objects with an "apply" method and "o" as a composition operator
 
   Improve syntax errors
   When you define a function with 2 arguments of the same name, it should say so instead of giving the message "Can't reassign identifier".
   Do by-name optional parameters make sense?
   Avoid using "system"; always use "rawSystem"
   Disallow ~ on everything but parameters - zero-argument functions have replaced them
+  Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
 -}
 
 import Data.List
@@ -87,8 +83,8 @@ repl env = do
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
-      --print expr
-      --putStrLn (prettyPrint expr)
+      print expr
+      putStrLn (prettyPrint expr)
 
       res <- runErrorT (replEval expr env)
       case res of
@@ -111,7 +107,7 @@ runFile filename env = do
   exprs <- parseInput filename input parseCompound
   lift $ putStrLn $ "Running file: " ++ filename
   forM_ exprs $ \expr -> do
-    --lift $ print expr
+    lift $ print expr
     lift $ putStrLn (prettyPrint expr)
     eval expr env
   pure env

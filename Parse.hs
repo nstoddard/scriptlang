@@ -69,7 +69,7 @@ parseCompound = many separator *> sepEndBy parseExpr (some separator)
 
 
 parseParam = asum [parseOptParam, try parseRepParam, parseReqParam]
-parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (wholeSymbol ":" *> parseExpr)
+parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (wholeSymbol "=" *> parseExpr)
 parseRepParam = RepParam <$> identifier' <* symbol "*"
 parseReqParam = ReqParam <$> identifier'
 
@@ -84,7 +84,7 @@ parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
 
 parseExec = do
   symbol "/"
-  str <- some (noneOf separators)
+  str <- some (noneOf separators) --TODO: this doesn't support comments!
   pure (EFnApp (eId "execRaw") [Arg $ makeString str])
 
 
@@ -254,7 +254,9 @@ inComment =
 
 float = lexeme floating <?> "float"
 
-floating = fractExponent =<< decimal
+floating = do
+  s <- sign
+  s <$> (fractExponent =<< decimal)
 
 fractExponent n = fractExponent' <|> exponentOnly where
   fractExponent' = do
@@ -267,7 +269,9 @@ fractExponent n = fractExponent' <|> exponentOnly where
 
 exponent' = do
   oneOf "eE"
-  power <$> decimal
+  f <- sign
+  e <- decimal
+  pure (power $ f e)
   where
     power e
       | e < 0 = 1.0/power(-e)
@@ -279,7 +283,9 @@ fraction = do
   pure (foldr op 0.0 digits)
   where op d f = (f + fromIntegral (digitToInt d))/10.0
 
-integer :: Parsec String () Integer
+sign :: Num a => Parsec String () (a->a)
+sign = (char '-' *> pure negate) <|> (char '+' *> pure id) <|> pure id
+
 integer = lexeme (try prefixNumber <|> decimal) <?> "integer"
 
 prefixNumber = char '0' *> (hexadecimal <|> binary <|> octal)
@@ -288,7 +294,11 @@ isBinDigit c = c == '0' || c == '1'
 
 binDigit = satisfy isBinDigit <?> "Binary digit"
 
-decimal = number 10 digit
+decimal = negDecimal <|> posDecimal
+posDecimal = number 10 digit
+negDecimal = do
+  char '-'
+  negate <$> posDecimal
 hexadecimal = char 'x' *> number 16 hexDigit
 binary = char 'b' *> number 2 binDigit
 octal = char 'o' *> number 8 octDigit

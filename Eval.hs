@@ -28,13 +28,20 @@ import Util
 import Expr
 
 
+
+isNilop (EClosure xs _ _) = all isNilop' xs
+isNilop (EPrim xs _) = all isNilop' xs
+isNilop _ = False
+
+isNilop' (OptParam {}) = True
+isNilop' (RepParam {}) = True
+isNilop' _ = False
+
 evalID derefVars (EId (id,accessType)) notFoundMsg env = do
   val <- envLookup id env
   case val of
     Nothing -> throwError $ notFoundMsg ++ id
-    Just (closure@(EClosure [] _ _), accessType2) -> eval closure env --TODO: what do we do with the access type here?
-    Just (prim@(EPrim [] fn), accessType2) -> eval prim env --TODO: what do we do with the access type here?
-    Just (val, accessType2) -> do
+    Just (val, accessType2) -> if isNilop val then eval (EFnApp (EIndirect val) []) env else do --TODO: what do we do with the access type here?
       (val,env) <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure (val,env)
         (ByVal, ByName) -> eval val env
@@ -103,15 +110,7 @@ eval (EFnApp fn args) env = do
             args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
     x -> throwError ("Invalid function: " ++ show x)
-eval (EPrim [] fn) env = do
-  bodyEnv <- envNewScope =<< lift newEnvStack
-  (res,_) <- fn bodyEnv
-  pure (res,env)
-eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case
-eval (EClosure [] body closure) env = do
-  bodyEnv <- envNewScope closure
-  (res,_) <- eval body bodyEnv
-  pure (res,env)
+eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
 eval (EClosure {}) env = throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do
   env' <- envNewScope env
@@ -140,6 +139,7 @@ eval (EAssign var val) env = do
     EVar var -> lift $ var $= val'
     x -> throwError $ "Not a variable: " ++ show x
   pure (val', env)
+eval (EIndirect expr) env = pure (expr, env)
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
@@ -160,6 +160,8 @@ evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 matchParams :: [Param] -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
 matchParams [] [] _ = pure []
 matchParams (ReqParam (name,accessType):params) (Arg arg:args) env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
+matchParams (OptParam (name,accessType) _:params) (Arg arg:args) env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
+matchParams (OptParam (name,accessType) def:params) [] env = (:) <$> evalArg name accessType def env <*> matchParams params [] env
 matchParams [RepParam (name,accessType)] args env = do
   args <- forM args $ \arg -> case arg of
     Arg arg -> fst <$> eval arg env

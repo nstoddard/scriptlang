@@ -118,7 +118,8 @@ data Expr =
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EClosure [Param] Expr EnvStack |
-  EIf Expr Expr Expr
+  EIf Expr Expr Expr |
+  EIndirect Expr --This is a huge hack
 
 fromEList :: Expr -> [Expr]
 fromEList (EObj (PrimObj (PList xs) _)) = xs
@@ -203,6 +204,7 @@ instance Pretty Expr where
   pretty (EVar _) = pretty "<var>"
   pretty (EGetVar id) = pretty "<getVar>"
   pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
+  pretty (EIndirect expr) = pretty "<indirect to: " <//> pretty expr <//> pretty ")"
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x
@@ -231,18 +233,21 @@ instance Show Expr where
   show (EId x)             = "(EId " ++ show x ++ ")"
   show (EFnApp x xs)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ ")"
   show (EMemberAccess x y) = "(EMemberAccess " ++ show x ++ " " ++ show y ++ ")"
-  show (EPrim _ _)           = "(EPrim <prim>" ++ ")"
+  show (EPrim _ _)         = "(EPrim <prim>" ++ ")"
   show (EFn params body)   = "(EFn " ++ show params ++ " " ++ show body ++ ")"
   show (EDef a b)          = "(EDef " ++ show a ++ " " ++ show b ++ ")"
   show (EVarDef a b)       = "(EVarDef " ++ show a ++ " " ++ show b ++ ")"
   show (EAssign a b)       = "(EAssign " ++ show a ++ " " ++ show b ++ ")"
+  show (EVar _)            = "(EVar _)"
+  show (EGetVar id)        = "(EGetVar " ++ show id ++ ")"
+  show (EMemberAccessGetVar a b) = "(EMemberAccessGetVar " ++ show a ++ " " ++ show b ++ ")"
   show (EBlock xs)         = "(EBlock " ++ show xs ++ ")"
   show (ENew x)            = "(ENew " ++ show x ++ ")"
   show (EWith a b)         = "(EWith " ++ show a ++ " " ++ show b ++ ")"
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
   show (EClosure a b c)    = "(EClosure " ++ show a ++ " " ++ show b ++ " " ++ "<env>" ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
-
+  show (EIndirect expr)    = "(EIndirect " ++ show expr ++ ")"
 
 
 
