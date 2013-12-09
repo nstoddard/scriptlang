@@ -11,10 +11,7 @@ module Scriptlang where
     Generators
     Syntax for specifying chars with a hex code
     Line numbers for errors
-    I/O
-      Should it be "5 println" or "println 5"?
-        It should probably be "println 5", because it shouldn't be possible for objects to override println. However, they should be able to override toString, but toString should be implemented by default in all objects and should just print "<object>" or something. We certainly need a way to create default environments for objects - they shouldn't begin with an empty environment.
-      toString
+    More I/O
     Extension methods
     Finish matchParams
     Add a method to be called when a method isn't defined
@@ -84,8 +81,8 @@ repl env = do
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
-      print expr
-      putStrLn (prettyPrint expr)
+      --print expr
+      --putStrLn (prettyPrint expr)
 
       res <- runErrorT (replEval expr env)
       case res of
@@ -108,8 +105,8 @@ runFile filename env = do
   exprs <- parseInput filename input parseCompound
   lift $ putStrLn $ "Running file: " ++ filename
   forM_ exprs $ \expr -> do
-    lift $ print expr
-    lift $ putStrLn (prettyPrint expr)
+    --lift $ print expr
+    --lift $ putStrLn (prettyPrint expr)
     eval expr env
   pure env
 

@@ -114,10 +114,9 @@ eval (EFnApp fn args) env = do
         case val of
           Just val -> evalApply obj args' env
           Nothing -> case args of
-            [] -> eval (EMemberAccess (EObj obj) id) env
             args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
-    x -> {-if null args then eval x env else-} throwError ("Invalid function: " ++ show x)
+    x -> throwError ("Invalid function: " ++ show x)
 eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
 eval (EClosure {}) env = throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do
@@ -161,7 +160,7 @@ replEval (EVarDef id val) env = do
   envRedefine id (val'',ByVal) env
 replEval expr env = eval expr env
 
-
+call obj f args = eval (EFnApp (EMemberAccess (EObj obj) f) args)
 evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 
 --Don't forget to evaluate the arguments too!
@@ -251,10 +250,23 @@ startEnv = envStackFromList [
         pure (EVoid, env)
       _ -> throwError "Invalid argument to execRaw"),
   ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure EVoid), --TODO: THIS DOESN'T WORK
-  ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid)
+  ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid),
+  ("print", objUnop' $ \obj env -> do
+    (expr,_) <- call obj "toString" [] env
+    case expr of
+      EObj (PrimObj (PString str) _) -> lift $ putStr str
+      x -> throwError $ "toString must return a string; not " ++ prettyPrint x
+    pure EVoid),
+  ("println", objUnop' $ \obj env -> do
+    (expr,_) <- call obj "toString" [] env
+    case expr of
+      EObj (PrimObj (PString str) _) -> lift $ putStrLn str
+      x -> throwError $ "toString must return a string; not " ++ prettyPrint x
+    pure EVoid)
   ]
 
 makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("+", primUnop $ onNum (a+) (fromInteger a+)),
   ("-", primUnop $ onNum (a-) (fromInteger a-)),
   ("*", primUnop $ onNum (a*) (fromInteger a*)),
@@ -274,6 +286,7 @@ makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
   ("sign", nilop $ pure (makeInt $ signum a))
   ]
 makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("+", primUnop $ onFloat (a+)),
   ("-", primUnop $ onFloat (a-)),
   ("*", primUnop $ onFloat (a*)),
@@ -289,17 +302,22 @@ makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
   ("abs", nilop $ pure (makeFloat $ abs a)),
   ("sign", nilop $ pure (makeFloat $ signum a))
   ]
-makeChar a = EObj $ PrimObj (PChar a) $ envFromList []
+makeChar a = EObj $ PrimObj (PChar a) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a))
+  ]
 makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("&&", primUnop $ onBool (a&&)),
   ("||", primUnop $ onBool (a||))
   ]
 makeString a = EObj $ PrimObj (PString a) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("apply", primUnop $ onInt' (\i -> makeChar <$> index a i))
   ]
 makeList a = EObj $ PrimObj (PList a) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("head", nilop $ if null a then throwError "Can't take the head of an empty list" else pure (head a)),
   ("tail", nilop $ if null a then throwError "Can't take the tail of an empty list" else pure (makeList $ tail a)),
   ("init", nilop $ if null a then throwError "Can't take the init of an empty list" else pure (makeList $ init a)),
@@ -310,6 +328,7 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("apply", primUnop $ onInt' (index a))
   ]
 makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("apply", primUnop $ onInt' (index a))
@@ -348,6 +367,11 @@ binop f = prim ["x", "y"] $ \args -> f (args!"x") (args!"y")
 primUnop :: (PrimData -> IOThrowsError Expr) -> Expr
 primUnop f = prim ["x"] $ \args -> let EObj (PrimObj prim _) = args!"x" in f prim
 
+objUnop :: (Obj -> IOThrowsError Expr) -> Expr
+objUnop f = prim ["x"] $ \args -> let EObj obj = args!"x" in f obj
+
+objUnop' :: (Obj -> EnvStack -> IOThrowsError Expr) -> Expr
+objUnop' f = prim' ["x"] $ \args env -> let EObj obj = args!"x" in f obj env
 
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
