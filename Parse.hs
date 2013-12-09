@@ -220,7 +220,7 @@ parseWholeInput = between whiteSpace eof
 symbol = lexeme . string
 --wholeSymbol is sometimes useful, but it makes a lot of assumptions about the nature of the given symbol. It can't be used everywhere because it conflicts with parens and other symbols that can be right next to each other - those particular symbols could be handled specially
 wholeSymbol str = lexeme $ do
-  let f = if isAlphaNum (head str) then satisfy isAlphaNum else satisfy (\x -> not (isAlphaNum x || isSpace x))
+  let f = satisfy (if isAlphaNum (head str) then isAlphaNum else (\x -> not (isAlphaNum x || isSpace x)))
   str' <- some f
   if str==str' then pure str else mzero
 lexeme p = try p <* whiteSpace

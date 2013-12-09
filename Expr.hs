@@ -98,8 +98,6 @@ envRemoveIORefs (EnvStack xs) = mapM get xs
 
 --- Expressions ---
 
---TODO: statements and expressions should have separate types! They're handled separately in the parser, already.
-
 data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString String | PList [Expr] | PTuple [Expr] deriving Show
 
 data Expr =
@@ -110,8 +108,7 @@ data Expr =
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EClosure [Param] Expr EnvStack |
-  EIf Expr Expr Expr |
-  EIndirect Expr --This is a huge hack
+  EIf Expr Expr Expr
 
 fromEList :: Expr -> [Expr]
 fromEList (EObj (PrimObj (PList xs) _)) = xs
@@ -197,7 +194,6 @@ instance Pretty Expr where
   pretty (EVar _) = pretty "<var>"
   pretty (EGetVar id) = pretty "<getVar>"
   pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
-  pretty (EIndirect expr) = pretty "<indirect to: " <//> pretty expr <//> pretty ")"
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x
@@ -240,7 +236,6 @@ instance Show Expr where
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
   show (EClosure a b c)    = "(EClosure " ++ show a ++ " " ++ show b ++ " " ++ "<env>" ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
-  show (EIndirect expr)    = "(EIndirect " ++ show expr ++ ")"
 
 
 

@@ -30,11 +30,10 @@ module Scriptlang where
     Reflection - checking which fields, methods, etc an object supportss
     Imports
     Treat functions as objects with an "apply" method and "o" as a composition operator
+    Currying, sections, tuple sections, list sections
 
   Improve syntax errors
-  When you define a function with 2 arguments of the same name, it should say so instead of giving the message "Can't reassign identifier".
   Do by-name optional parameters make sense?
-  Avoid using "system"; always use "rawSystem"
   Disallow ~ on everything but parameters - zero-argument functions have replaced them
   Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
   Should it be possible to overload assignment?

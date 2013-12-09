@@ -28,6 +28,4 @@ list xs* -> xs
 
 opt ?a=0 ?b=1 ?c=2 -> (a,b,c)
 
-emptyTest -> 5
-
 mkAccum n -> {var s <- n; i => s <- s+i}

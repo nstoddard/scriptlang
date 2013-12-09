@@ -16,6 +16,8 @@ import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M
 import Data.Map (Map, (!))
+import qualified Data.Set as S
+import Data.Set (Set)
 import System.Exit
 import System.Directory
 import qualified System.IO.Strict as Strict
@@ -52,22 +54,6 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
         val -> pure (val,env))
       else pure (val,env)
 
-{-evalID derefVars (EId (id,accessType)) notFoundMsg env = do
-  val <- envLookup id env
-  case val of
-    Nothing -> throwError $ notFoundMsg ++ id
-    Just (val, accessType2) -> if isNilop val then eval (EFnApp (EIndirect val) []) env else do --TODO: what do we do with the access type here?
-      (val,env) <- case (accessType,accessType2) of
-        (ByVal, ByVal) -> pure (val,env)
-        (ByVal, ByName) -> eval val env
-        (ByName, ByName) -> pure (val,env)
-        (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
-      if derefVars then (case val of
-        EVar var -> (,env) <$> lift (get var)
-        val -> pure (val,env))
-      else pure (val,env)-}
-
-
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 eval EVoid env = pure (EVoid, env)
 eval id@(EId {}) env = evalID True id "Identifier not found: " env
@@ -76,20 +62,20 @@ eval (EMemberAccess obj id) env = do
   obj <- eval obj env
   case obj of
     (EObj (Obj oenv),_) -> do
-      (val,_) <- evalID True (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (EObj (PrimObj prim oenv),_) -> do
-      (val,_) <- evalID True (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
 eval (EMemberAccessGetVar obj id) env = do
   obj <- eval obj env
   case obj of
     (EObj (Obj oenv),_) -> do
-      (val,_) <- evalID False (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (EObj (PrimObj prim oenv),_) -> do
-      (val,_) <- evalID False (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
+      (val,_) <- evalID False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
 eval (EDef id val) env = envDefine id env $ do
@@ -101,17 +87,21 @@ eval (EBlock exprs) env = do
   env' <- envNewScope env
   vals <- forM exprs $ \expr -> eval expr env'
   pure (fst $ last vals, env)
-eval (EFn params body) env = pure (EClosure params body env, env)
+eval (EFn params body) env = do
+  verifyParams params
+  pure (EClosure params body env, env)
 eval (EFnApp fn args) env = do
   (fn',_) <- eval fn env
   case fn' of
     EClosure params body closure -> do
+      verifyArgs args
       args' <- matchParams params args env
       bodyEnv <- envNewScope closure
       forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
       (res,_) <- eval body bodyEnv
       pure (res,env)
     EPrim params fn -> do
+      verifyArgs args
       args' <- matchParams params args env
       bodyEnv <- envNewScope =<< lift newEnvStack
       forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
@@ -158,7 +148,6 @@ eval (EAssign var val) env = do
     EVar var -> lift $ var $= val'
     x -> throwError $ "Not a variable: " ++ show x
   pure (val', env)
-eval (EIndirect expr) env = pure (expr, env)
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
@@ -178,15 +167,35 @@ evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 --Don't forget to evaluate the arguments too!
 matchParams :: [Param] -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
 matchParams [] [] _ = pure []
-matchParams (ReqParam (name,accessType):params) (Arg arg:args) env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
-matchParams (OptParam (name,accessType) _:params) (Arg arg:args) env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
+matchParams params_@(ReqParam (name,accessType)  :params) (Arg arg:args) env = evalParams params_ arg args env
+matchParams params_@(OptParam (name,accessType) _:params) (Arg arg:args) env = evalParams params_ arg args env
 matchParams (OptParam (name,accessType) def:params) [] env = (:) <$> evalArg name accessType def env <*> matchParams params [] env
 matchParams [RepParam (name,accessType)] args env = do
   args <- forM args $ \arg -> case arg of
     Arg arg -> fst <$> eval arg env
-    _ -> throwError $ "Invalid argument for repeated parameter " ++ name
+    KeywordArg k arg -> throwError $ "Can't pass keyword argument to repeated parameter: " ++ prettyPrint k ++ ":" ++ prettyPrint arg
   pure [(name, accessType, makeList args)]
+matchParams params_ (KeywordArg k arg:args) env = do
+  params <- takeKeywordArg params_ k
+  evalParams params arg args env
+matchParams params [] env = throwError $ "Not enough arguments for function; unspecified arguments: " ++ intercalate ", " (map prettyPrint params)
+matchParams [] args env = throwError $ "Too many arguments for function; extra arguments: " ++ intercalate ", " (map prettyPrint args)
 matchParams params args env = throwError $ "matchParams unimplemented for " ++ show (params,args)
+
+takeKeywordArg :: [Param] -> String -> IOThrowsError [Param]
+takeKeywordArg params name = case length match of
+  0 -> throwError $ "No match for keyword argument " ++ name
+  1 -> pure (head match : noMatch)
+  _ -> throwError $ "Multiple matches for keyword argument " ++ name ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
+  where
+    (match, noMatch) = flip partition params $ \param -> case param of
+      ReqParam (name',_)   -> name == name'
+      OptParam (name',_) _ -> name == name'
+
+
+evalParams :: [Param] -> Expr -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
+evalParams (ReqParam (name,accessType)  :params) arg args env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
+evalParams (OptParam (name,accessType) _:params) arg args env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
 
 
 evalArg :: String -> AccessType -> Expr -> EnvStack -> IOThrowsError (String,AccessType,Expr)
@@ -196,6 +205,23 @@ evalArg name accessType arg env = do
     ByName -> pure (arg, env)
   pure (name,accessType,arg')
 
+verifyParams :: [Param] -> IOThrowsError ()
+verifyParams = verifyParams' S.empty where
+  verifyParams' :: Set String -> [Param] -> IOThrowsError ()
+  verifyParams' set [] = pure ()
+  verifyParams' set (ReqParam name:  params) = verifyID set name params
+  verifyParams' set (OptParam name _:params) = verifyID set name params
+  verifyParams' set (RepParam name:  params) = verifyID set name params
+  verifyID set (name,_) params = if S.member name set then throwError $ "Two definitions for parameter " ++ name
+    else verifyParams' (S.insert name set) params
+
+verifyArgs :: [Arg] -> IOThrowsError ()
+verifyArgs = verifyArgs' S.empty where
+  verifyArgs' :: Set String -> [Arg] -> IOThrowsError ()
+  verifyArgs' set [] = pure ()
+  verifyArgs' set (Arg _:args) = verifyArgs' set args
+  verifyArgs' set (KeywordArg key _:args) = if S.member key set then throwError $ "Two definitions for keyword argument " ++ key
+    else verifyArgs' (S.insert key set) args
 
 
 envLookup' name env = fst <$> eval (EId (name,ByVal)) env
