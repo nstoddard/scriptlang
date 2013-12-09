@@ -41,7 +41,7 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
   val <- envLookup id env
   case val of
     Nothing -> throwError $ notFoundMsg ++ id
-    Just (val, accessType2) -> if isNilop val then eval (EFnApp (EIndirect val) []) env else do --TODO: what do we do with the access type here?
+    Just (val, accessType2) -> do
       (val,env) <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure (val,env)
         (ByVal, ByName) -> eval val env
@@ -51,6 +51,21 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
         EVar var -> (,env) <$> lift (get var)
         val -> pure (val,env))
       else pure (val,env)
+
+{-evalID derefVars (EId (id,accessType)) notFoundMsg env = do
+  val <- envLookup id env
+  case val of
+    Nothing -> throwError $ notFoundMsg ++ id
+    Just (val, accessType2) -> if isNilop val then eval (EFnApp (EIndirect val) []) env else do --TODO: what do we do with the access type here?
+      (val,env) <- case (accessType,accessType2) of
+        (ByVal, ByVal) -> pure (val,env)
+        (ByVal, ByName) -> eval val env
+        (ByName, ByName) -> pure (val,env)
+        (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
+      if derefVars then (case val of
+        EVar var -> (,env) <$> lift (get var)
+        val -> pure (val,env))
+      else pure (val,env)-}
 
 
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
@@ -77,7 +92,9 @@ eval (EMemberAccessGetVar obj id) env = do
       (val,_) <- evalID False (eId id) ("Object has no such field: ") =<< lift (envStackFromEnv oenv)
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
-eval (EDef id val) env = envDefine id env $ (,ByVal) . fst <$> eval val env
+eval (EDef id val) env = envDefine id env $ do
+  val <- (,ByVal) . fst <$> eval val env
+  pure (val, fst val)
 eval (EObj obj) env = pure (EObj obj, env)
 eval (EBlock []) env = pure (EVoid, env)
 eval (EBlock exprs) env = do
@@ -91,16 +108,17 @@ eval (EFnApp fn args) env = do
     EClosure params body closure -> do
       args' <- matchParams params args env
       bodyEnv <- envNewScope closure
-      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure (val,accessType))
+      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
       (res,_) <- eval body bodyEnv
       pure (res,env)
     EPrim params fn -> do
       args' <- matchParams params args env
       bodyEnv <- envNewScope =<< lift newEnvStack
-      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure (val,accessType))
+      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
       (res,_) <- fn bodyEnv
       pure (res,env)
     EObj obj -> case args of
+      [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
       args'@(Arg (EId (id,ByVal)):args) -> do
         val <- envLookup id env
         case val of
@@ -109,7 +127,7 @@ eval (EFnApp fn args) env = do
             [] -> eval (EMemberAccess (EObj obj) id) env
             args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
-    x -> throwError ("Invalid function: " ++ show x)
+    x -> if null args then eval x env else throwError ("Invalid function: " ++ show x)
 eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
 eval (EClosure {}) env = throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do
@@ -131,7 +149,8 @@ eval (EIf cond t f) env = do
     c -> throwError $ "Invalid condition for if: " ++ show c
 eval (EVarDef id val) env = envDefine id env $ do
   (val,_) <- eval val env
-  lift $ (,ByVal) . EVar <$> newIORef val
+  val' <- lift $ (,ByVal) . EVar <$> newIORef val
+  pure (val', val)
 eval (EAssign var val) env = do
   (var,_) <- eval var env
   (val',_) <- eval val env
@@ -167,7 +186,7 @@ matchParams [RepParam (name,accessType)] args env = do
     Arg arg -> fst <$> eval arg env
     _ -> throwError $ "Invalid argument for repeated parameter " ++ name
   pure [(name, accessType, makeList args)]
-matchParams params arg env = throwError $ "matchParams unimplemented for " ++ show (params,arg)
+matchParams params args env = throwError $ "matchParams unimplemented for " ++ show (params,args)
 
 
 evalArg :: String -> AccessType -> Expr -> EnvStack -> IOThrowsError (String,AccessType,Expr)

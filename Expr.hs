@@ -73,23 +73,15 @@ envLookup id (EnvStack (x:xs)) = do
     Nothing -> envLookup id (EnvStack xs)
     Just res -> pure (Just res)
 
-{-envDefine :: String -> Value -> EnvStack -> IOThrowsError ()
-envDefine id val env@(EnvStack (x:xs)) = do
-  x' <- lift $ get x
-  case M.lookup id x' of
-    Nothing -> lift $ x $= M.insert id val x'
-    Just _ -> throwError $ "Can't reassign identifier: " ++ id
--}
-
 --The third parameter isn't just a Value because it should only be executed if there isn't an error.
-envDefine :: String -> EnvStack -> IOThrowsError Value -> IOThrowsError (Expr,EnvStack)
+envDefine :: String -> EnvStack -> IOThrowsError (Value,Expr) -> IOThrowsError (Expr,EnvStack)
 envDefine id env@(EnvStack (x:xs)) f = do
   x' <- lift $ get x
   case M.lookup id x' of
     Nothing -> do
-      val <- f
+      (val,ret) <- f
       lift $ x $= M.insert id val x'
-      pure (fst val, env)
+      pure (ret, env)
     Just _ -> throwError $ "Can't reassign identifier: " ++ id
 
 envRedefine :: String -> Value -> EnvStack -> IOThrowsError (Expr,EnvStack)
@@ -128,6 +120,7 @@ fromEList xs = error $ "Internal error: not a list: " ++ show xs
 getVar :: Expr -> Maybe Expr
 getVar (EId id) = pure $ EGetVar id
 getVar (EMemberAccess expr id) = pure $ EMemberAccessGetVar expr id
+getVar (EFnApp f []) = getVar f
 getVar _ = Nothing
 
 getExprEnv :: Expr -> IOThrowsError EnvStack

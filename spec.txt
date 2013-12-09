@@ -178,3 +178,8 @@ Function parsing:
 This way, you should never come across a lone identifier in the parse tree, vastly simplifying evaluation.
 Function evaluation:
   
+
+
+Perhaps the extension syntax should be something like:
+  0.fac = 1
+  n:Int.fac = n * (n-1) fac

@@ -37,6 +37,8 @@ module Scriptlang where
   Avoid using "system"; always use "rawSystem"
   Disallow ~ on everything but parameters - zero-argument functions have replaced them
   Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
+  Should it be possible to overload assignment?
+  Add fields - like Scala's getters and setters
 -}
 
 import Data.List
@@ -70,8 +72,8 @@ import Eval
 
 main = do
   env <- startEnv
-  env' <- runErrorT $ runFile "stdlib" env
-  case env' of
+  env <- runErrorT $ runFile "stdlib" env
+  case env of
     Left err -> putStrLn err
     Right env -> repl env
 
