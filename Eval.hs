@@ -127,7 +127,7 @@ eval (EFnApp fn args) env = do
             [] -> eval (EMemberAccess (EObj obj) id) env
             args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
-    x -> if null args then eval x env else throwError ("Invalid function: " ++ show x)
+    x -> {-if null args then eval x env else-} throwError ("Invalid function: " ++ show x)
 eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
 eval (EClosure {}) env = throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do

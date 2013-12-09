@@ -120,7 +120,7 @@ fromEList xs = error $ "Internal error: not a list: " ++ show xs
 getVar :: Expr -> Maybe Expr
 getVar (EId id) = pure $ EGetVar id
 getVar (EMemberAccess expr id) = pure $ EMemberAccessGetVar expr id
-getVar (EFnApp f []) = getVar f
+getVar (EFnApp f []) = getVar f --TODO: is this line still needed?
 getVar _ = Nothing
 
 getExprEnv :: Expr -> IOThrowsError EnvStack

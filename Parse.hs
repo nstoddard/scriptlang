@@ -74,7 +74,7 @@ parseRepParam = RepParam <$> identifier' <* symbol "*"
 parseReqParam = ReqParam <$> identifier'
 
 
-parseExpr = parseBlock <|> parseVarDef <|> try parseDef <|> tryParseAssign
+parseExpr = parseVarDef <|> try parseDef <|> tryParseAssign
 
 parseNonStatement = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
@@ -90,7 +90,7 @@ parseExec = do
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [parseTuple, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
 parsePipes = do
   start <- parseNonPipeExpr
@@ -108,7 +108,9 @@ parseTuple = do
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
   first <- parseNonFnAppExpr
-  EFnApp first <$> many parseArg
+  case first of
+    EId _ -> EFnApp first <$> many parseArg
+    _ -> (EFnApp first <$> some parseArg) <|> pure first
 parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg) --TODO: this used to say "some parseArg", but I changed it so that prefix operators can only take 1 argument
 parseArg = do
   first <- try parseNonFnAppExpr
