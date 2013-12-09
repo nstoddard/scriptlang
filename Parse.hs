@@ -82,21 +82,20 @@ parseNonIf = buildExpressionParser opTable parseWith
 parseNonWithExpr = try parseFn <|> parseFnApp
 parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
 
+parseSingleTokenExpr = parseMemberAccess
+parseNonMemberAccess = parseOtherExpr
+parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+
 parseExec = do
   symbol "/"
   str <- some (noneOf separators) --TODO: this doesn't support comments!
   pure (EFnApp (eId "execRaw") [Arg $ makeString str])
 
 
-parseSingleTokenExpr = parseMemberAccess
-parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
-
 parsePipes = do
   start <- parseNonPipeExpr
   xs <- chainl ((:[]) <$> ((,) <$> (symbol "|" *> identifier) <*> many parseArg)) (pure (++)) []
   let
-    f obj (id,[]) = EMemberAccess obj id
     f obj (id,args) = EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
 
@@ -108,10 +107,11 @@ parseTuple = do
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
   first <- parseNonFnAppExpr
-  case first of
+  EFnApp first <$> many parseArg
+  {-case first of
     EId _ -> EFnApp first <$> many parseArg
-    _ -> (EFnApp first <$> some parseArg) <|> pure first
-parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg) --TODO: this used to say "some parseArg", but I changed it so that prefix operators can only take 1 argument
+    _ -> (EFnApp first <$> some parseArg) <|> pure first-}
+parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg)
 parseArg = do
   first <- try parseNonFnAppExpr
   let

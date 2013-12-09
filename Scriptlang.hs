@@ -28,13 +28,16 @@ module Scriptlang where
     Imports
     Treat functions as objects with an "apply" method and "o" as a composition operator
     Currying, sections, tuple sections, list sections
-
+  Hide internal details
+    3 + []
+    Everything that prints the parse tree directly
   Improve syntax errors
   Do by-name optional parameters make sense?
   Disallow ~ on everything but parameters - zero-argument functions have replaced them
   Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
   Should it be possible to overload assignment?
   Add fields - like Scala's getters and setters
+  Verify that every character that's allowed in operators has a defined precedence; otherwise you can't use that character to begin an operator
 -}
 
 import Data.List
@@ -103,7 +106,7 @@ runFile filename env = do
   if not exists then throwError ("File doesn't exist: " ++ filename) else do
   input <- lift $ Strict.readFile filename
   exprs <- parseInput filename input parseCompound
-  lift $ putStrLn $ "Running file: " ++ filename
+  --lift $ putStrLn $ "Running file: " ++ filename
   forM_ exprs $ \expr -> do
     --lift $ print expr
     --lift $ putStrLn (prettyPrint expr)

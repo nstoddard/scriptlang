@@ -116,7 +116,10 @@ eval (EFnApp fn args) env = do
           Nothing -> case args of
             args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
-    x -> throwError ("Invalid function: " ++ show x)
+    EVoid -> case args of
+      [] -> pure (EVoid,env)
+      args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
+    x -> throwError ("Invalid function: " ++ prettyPrint x)
 eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
 eval (EClosure {}) env = throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do
@@ -283,8 +286,28 @@ makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
   ("==", primUnop $ onNumToBool (a==) (fromInteger a==)),
   ("!=", primUnop $ onNumToBool (a/=) (fromInteger a/=)),
   ("abs", nilop $ pure (makeInt $ abs a)),
-  ("sign", nilop $ pure (makeInt $ signum a))
+  ("sign", nilop $ pure (makeInt $ signum a)),
+  ("logBase", primUnop $ onFloat (logBase $ fromInteger a)),
+  ("atan2", primUnop $ onFloat (atan2 $ fromInteger a)),
+  ("ln", nilop . pure . makeFloat . log $ fromInteger a),
+  ("log", nilop . pure . makeFloat . (logBase 10) $ fromInteger a),
+  ("lg", nilop . pure . makeFloat . (logBase 2) $ fromInteger a),
+  ("exp", nilop . pure . makeFloat . exp $ fromInteger a),
+  ("sqrt", nilop . pure . makeFloat . sqrt $ fromInteger a),
+  ("sin", nilop . pure . makeFloat . sin $ fromInteger a),
+  ("cos", nilop . pure . makeFloat . cos $ fromInteger a),
+  ("tan", nilop . pure . makeFloat . tan $ fromInteger a),
+  ("asin", nilop . pure . makeFloat . asin $ fromInteger a),
+  ("acos", nilop . pure . makeFloat . acos $ fromInteger a),
+  ("atan", nilop . pure . makeFloat . atan $ fromInteger a),
+  ("sinh", nilop . pure . makeFloat . sinh $ fromInteger a),
+  ("cosh", nilop . pure . makeFloat . cosh $ fromInteger a),
+  ("tanh", nilop . pure . makeFloat . tanh $ fromInteger a),
+  ("asinh", nilop . pure . makeFloat . asinh $ fromInteger a),
+  ("acosh", nilop . pure . makeFloat . acosh $ fromInteger a),
+  ("atanh", nilop . pure . makeFloat . atanh $ fromInteger a)
   ]
+makeFloat :: Double -> Expr
 makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("+", primUnop $ onFloat (a+)),
@@ -299,8 +322,35 @@ makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
   ("<=", primUnop $ onFloatToBool (a<=)),
   ("==", primUnop $ onFloatToBool (a==)),
   ("!=", primUnop $ onFloatToBool (a/=)),
-  ("abs", nilop $ pure (makeFloat $ abs a)),
-  ("sign", nilop $ pure (makeFloat $ signum a))
+  ("abs", nilop $ pure . makeFloat $ abs a),
+  ("sign", nilop $ pure . makeFloat $ signum a),
+  ("floor", nilop . pure . makeInt $ floor a),
+  ("ceil", nilop . pure . makeInt $ ceiling a),
+  ("truncate", nilop . pure . makeInt $ truncate a),
+  ("round", nilop . pure . makeInt $ round a),
+  ("isNaN", nilop . pure . makeBool $ isNaN a),
+  ("isInfinite", nilop . pure . makeBool $ isInfinite a),
+  ("isDenormalized", nilop . pure . makeBool $ isDenormalized a),
+  ("isNegativeZero", nilop . pure . makeBool $ isNegativeZero a),
+  ("logBase", primUnop $ onFloat (logBase a)),
+  ("atan2", primUnop $ onFloat (atan2 a)),
+  ("ln", nilop . pure . makeFloat $ log a),
+  ("log", nilop . pure . makeFloat $ (logBase 10) a),
+  ("lg", nilop . pure . makeFloat $ (logBase 2) a),
+  ("exp", nilop . pure . makeFloat $ exp a),
+  ("sqrt", nilop . pure . makeFloat $ sqrt a),
+  ("sin", nilop . pure . makeFloat $ sin a),
+  ("cos", nilop . pure . makeFloat $ cos a),
+  ("tan", nilop . pure . makeFloat $ tan a),
+  ("asin", nilop . pure . makeFloat $ asin a),
+  ("acos", nilop . pure . makeFloat $ acos a),
+  ("atan", nilop . pure . makeFloat $ atan a),
+  ("sinh", nilop . pure . makeFloat $ sinh a),
+  ("cosh", nilop . pure . makeFloat $ cosh a),
+  ("tanh", nilop . pure . makeFloat $ tanh a),
+  ("asinh", nilop . pure . makeFloat $ asinh a),
+  ("acosh", nilop . pure . makeFloat $ acosh a),
+  ("atanh", nilop . pure . makeFloat $ atanh a)
   ]
 makeChar a = EObj $ PrimObj (PChar a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a))
@@ -390,6 +440,10 @@ onFloat :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onFloat onFloat (PInt b) = pure . makeFloat $ onFloat (fromInteger b)
 onFloat onFloat (PFloat b) = pure . makeFloat $ onFloat b
 onFloat onFloat _ = throwError "Invalid argument to onFloat"
+
+onFloatOnly :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
+onFloatOnly onFloat (PFloat b) = pure . makeFloat $ onFloat b
+onFloatOnly onFloat _ = throwError "Invalid argument to onFloatOnly"
 
 onNumToBool :: (Integer -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
 onNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt b

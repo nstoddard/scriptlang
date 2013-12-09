@@ -1,4 +1,4 @@
-This is hopelessly out of date!
+This is out of date! Very little of it is still accurate.
 
 Characteristics:
   Dynamically typed
