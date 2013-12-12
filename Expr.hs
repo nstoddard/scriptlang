@@ -102,7 +102,8 @@ data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString
 
 data Expr =
   EVoid |
-  EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
+  --TODO: should EFnApp be split into 2 cases, one where all arguments have been provided and one where they haven't?
+  EId Identifier | EFnApp Expr [Arg] Bool | EMemberAccess Expr String |
   EPrim [Param] (EnvStack -> IOThrowsError (Expr,EnvStack)) | EFn [Param] Expr |
   EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
@@ -117,7 +118,7 @@ fromEList xs = error $ "Internal error: not a list: " ++ show xs
 getVar :: Expr -> Maybe Expr
 getVar (EId id) = pure $ EGetVar id
 getVar (EMemberAccess expr id) = pure $ EMemberAccessGetVar expr id
-getVar (EFnApp f []) = getVar f --TODO: is this line still needed?
+getVar (EFnApp f [] _) = getVar f --TODO: is this line still needed?
 getVar _ = Nothing
 
 getExprEnv :: Expr -> IOThrowsError EnvStack
@@ -131,9 +132,12 @@ data AccessType = ByVal | ByName deriving (Eq,Show)
 data Obj = Obj Env | PrimObj PrimData Env
 
 data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier deriving Show
-data Arg = Arg Expr | KeywordArg String Expr deriving Show
+data Arg = Arg Expr | KeywordArg String Expr | UnknownArg deriving Show
 
 type IOThrowsError = ErrorT String IO
+
+isUnknownArg UnknownArg = True
+isUnknownArg _ = False
 
 reqParam name = ReqParam (name,ByVal)
 optParam name = OptParam (name,ByVal)
@@ -171,12 +175,14 @@ instance Pretty Param where
 instance Pretty Arg where
   pretty (Arg expr) = pretty expr
   pretty (KeywordArg name expr) = pretty name <//> pretty ":" <//> pretty expr
+  pretty UnknownArg = pretty "_"
 
 instance Pretty Expr where
   pretty EVoid = pretty "void"
   pretty (EId (id,accessType)) = pretty accessType <//> pretty id
-  pretty (EFnApp f []) = pretty f
-  pretty (EFnApp f args) = pretty "(" <//> pretty f </> hsep (map pretty args) <//> pretty ")"
+  pretty (EFnApp f [] False) = pretty f
+  pretty (EFnApp f args False) = pretty "(" <//> pretty f </> hsep (map pretty args) <//> pretty ")"
+  pretty (EFnApp f args True)  = pretty "(" <//> pretty f </> hsep (map pretty args) </> pretty "_*" <//> pretty ")"
   pretty (EMemberAccess obj id) = if isOperator id
     then pretty obj </> pretty id
     else pretty obj <//> pretty "." <//> pretty id
@@ -220,7 +226,7 @@ instance Show Obj where
 instance Show Expr where
   show EVoid               = "(EVoid" ++ ")"
   show (EId x)             = "(EId " ++ show x ++ ")"
-  show (EFnApp x xs)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ ")"
+  show (EFnApp x xs y)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ " " ++ show y ++ ")"
   show (EMemberAccess x y) = "(EMemberAccess " ++ show x ++ " " ++ show y ++ ")"
   show (EPrim _ _)         = "(EPrim <prim>" ++ ")"
   show (EFn params body)   = "(EFn " ++ show params ++ " " ++ show body ++ ")"

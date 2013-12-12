@@ -23,6 +23,7 @@ import Data.Foldable (asum, toList)
 import Debug.Trace
 
 import Text.Parsec hiding ((<|>), many, optional, State)
+import qualified Text.Parsec as Parsec
 import Text.Parsec.Expr
 
 import Util
@@ -48,7 +49,7 @@ identifier' = do
 parseDef = do
   id <- identifier
   let
-    parseValDef = EDef id <$> (wholeSymbol "=" *> parseExpr)
+    parseValDef = EDef id <$> (symbol "=" *> parseExpr)
     parseFnDef = do
       params <- many parseParam
       body <- symbol "->" *> parseExpr
@@ -57,19 +58,19 @@ parseDef = do
 
 
 parseVarDef = do
-  name <- symbol "var" *> identifier
+  name <- keyword "var" *> identifier
   val <- (symbol "<-" *> parseExpr) <|> pure EVoid
   pure $ EVarDef name val
 
 separators = ";,\n"
 separator = lexeme (oneOf separators)
 parseBlock = EBlock <$> block
-block = symbol "{" *> many separator *> sepEndBy parseExpr (some separator) <* symbol "}"
+block = grouper '{' *> many separator *> sepEndBy parseExpr (some separator) <* grouper '}'
 parseCompound = many separator *> sepEndBy parseExpr (some separator)
 
 
 parseParam = asum [parseOptParam, try parseRepParam, parseReqParam]
-parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (wholeSymbol "=" *> parseExpr)
+parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
 parseRepParam = RepParam <$> identifier' <* symbol "*"
 parseReqParam = ReqParam <$> identifier'
 
@@ -89,34 +90,33 @@ parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, 
 parseExec = do
   symbol "/"
   str <- some (noneOf separators) --TODO: this doesn't support comments!
-  pure (EFnApp (eId "execRaw") [Arg $ makeString str])
+  pure (EFnApp (eId "execRaw") [Arg $ makeString str] False)
 
 
 parsePipes = do
   start <- parseNonPipeExpr
   xs <- chainl ((:[]) <$> ((,) <$> (symbol "|" *> identifier) <*> many parseArg)) (pure (++)) []
   let
-    f obj (id,args) = EFnApp (EMemberAccess obj id) args
+    f obj (id,args) = EFnApp (EMemberAccess obj id) args False
   pure $ foldl f start xs
 
-parseList = makeList' <$> (symbol "[" *> sepEndBy parseExpr separator <* symbol "]")
+parseList = makeList' <$> (grouper '[' *> sepEndBy parseExpr separator <* grouper ']')
 parseTuple = do
-  first <- symbol "(" *> parseExpr
-  (symbol ")" *> pure first) <|> (makeTuple' . (first:) <$> (separator *> sepEndBy parseExpr separator <* symbol ")"))
+  first <- grouper '(' *> parseExpr
+  (grouper ')' *> pure first) <|> (makeTuple' . (first:) <$> (separator *> sepEndBy parseExpr separator <* grouper ')'))
 
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
   first <- parseNonFnAppExpr
-  EFnApp first <$> many parseArg
-  {-case first of
-    EId _ -> EFnApp first <$> many parseArg
-    _ -> (EFnApp first <$> some parseArg) <|> pure first-}
-parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg)
-parseArg = do
+  EFnApp first <$> many parseArg <*> ((symbol "_*" *> pure True) <|> pure False)
+
+parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg) <*> pure False
+parseUnknownArg = symbol "_" *> pure UnknownArg
+parseArg = parseUnknownArg <|> do
   first <- try parseNonFnAppExpr
   let
     parseKeywordArg = do
-      wholeSymbol ":"
+      symbol ":"
       case first of
         EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
         _ -> mzero
@@ -126,19 +126,19 @@ parseMemberAccess = do
   first <- parseNonMemberAccess
   (EMemberAccess first <$> (symbol "." *> identifier)) <|> pure first
 
-parseNew = ENew <$> (symbol "new" *> block)
+parseNew = ENew <$> (keyword "new" *> block)
 parseWith = do
   obj <- parseNonWithExpr
   let withArg = (ENew <$> block) <|> parseNonWithExpr
-  xs <- chainl ((:[]) <$> (symbol "with" *> withArg)) (pure (++)) []
+  xs <- chainl ((:[]) <$> (keyword "with" *> withArg)) (pure (++)) []
   pure $ foldl EWith obj xs
 
 parseIf = do
-  cond <- symbol "if" *> parseSingleTokenExpr
+  cond <- keyword "if" *> parseSingleTokenExpr
   t <- parseNonIf
   f <- parseElse <|> pure EVoid
   pure (EIf cond t f)
-parseElse = anyWhiteSpace *> symbol "else" *> parseExpr
+parseElse = anyWhiteSpace *> keyword "else" *> parseExpr
 
 parseFn = do
   params <- many parseParam
@@ -146,9 +146,9 @@ parseFn = do
   pure (EFn params body)
 
 parseBool = parseTrue <|> parseFalse
-parseTrue = symbol "True" *> pure (makeBool True)
-parseFalse = symbol "False" *> pure (makeBool False)
-parseVoid = symbol "void" *> pure EVoid
+parseTrue = keyword "True" *> pure (makeBool True)
+parseFalse = keyword "False" *> pure (makeBool False)
+parseVoid = keyword "void" *> pure EVoid
 
 
 
@@ -160,27 +160,33 @@ opTable = [
   op '<' ++ op '>',
   op '&',
   op '^',
-  op '|'
+  op '|',
+  --TODO: figure out precedence of these chars:
+  op '?' ++ op '\\' ++ op '`' ++ op '~' ++ op '@' ++ op '#' ++ op '$' ++ op '_'
   ]
 op startChar = [binopL startChar, binopR startChar]
 binopL startChar = Infix (try $ do
   name <- operator startChar False
-  pure (\a b -> EFnApp (EMemberAccess a name) [Arg b])
+  pure (\a b -> EFnApp (EMemberAccess a name) [Arg b] False)
   ) AssocLeft
 binopR startChar = Infix (try $ do
   name <- operator startChar True
-  pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
+  pure (\a b -> EFnApp (EMemberAccess b name) [Arg a] False) --We swap a and b here intentionally
   ) AssocRight
 
-reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
+reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":", "_", "_*", "."]
+builtinOps = reservedOps ++ ["*", "/"]
 keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]
 
+groupChars = "()[]{}"
+
 identStart = satisfy isAlpha
-identChar = satisfy isAlphaNum
+identChar = satisfy (\x -> isAlphaNum x || x=='\'')
 
 identifier = (do
   val <- lexeme $ (:) <$> identStart <*> many identChar
   if val `elem` keywords then mzero else pure val) <?> "identifier"
+
 
 opChars = "/<>?:\\|`~!@#$%^&*_+-="
 
@@ -216,21 +222,18 @@ escapeChars = [
 
 parseWholeInput = between whiteSpace eof
 
+keyword str = assert (str `elem` keywords) $ lexeme (string str <* notFollowedBy (satisfy isAlphaNum))
+symbol str = assert (str `elem` builtinOps) $ lexeme (string str <* notFollowedBy (satisfy $ (`elem` opChars)))
+grouper c = assert (c `elem` groupChars) $ lexeme (char c)
 
-symbol = lexeme . string
---wholeSymbol is sometimes useful, but it makes a lot of assumptions about the nature of the given symbol. It can't be used everywhere because it conflicts with parens and other symbols that can be right next to each other - those particular symbols could be handled specially
-wholeSymbol str = lexeme $ do
-  let f = satisfy (if isAlphaNum (head str) then isAlphaNum else (\x -> not (isAlphaNum x || isSpace x)))
-  str' <- some f
-  if str==str' then pure str else mzero
 lexeme p = try p <* whiteSpace
 
---We don't allow newlines as whitespace because they are statement separators; the symbol "\" followed by a newline must be used instead
+--We don't allow newlines as whitespace because they are statement separators; the symbol' "\" followed by a newline must be used instead
 whiteSpace = whiteSpace' " \t"
 anyWhiteSpace = whiteSpace' " \t\n"
 
 whiteSpace' :: String -> Parsec String () ()
-whiteSpace' whitespace = skipMany (void (oneOf whitespace) <|> oneLineComment <|> multiLineComment <|> void (symbol "\\\n")) <?> "whitespace"
+whiteSpace' whitespace = skipMany (void (oneOf whitespace) <|> oneLineComment <|> multiLineComment <|> void (lexeme $ string "\\\n")) <?> "whitespace"
 
 commentLine = "//"
 commentStart = "/*"

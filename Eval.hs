@@ -90,9 +90,16 @@ eval (EBlock exprs) env = do
 eval (EFn params body) env = do
   verifyParams params
   pure (EClosure params body env, env)
-eval (EFnApp fn args) env = do
+--TODO: this is a bit of a hack
+eval x@(EFnApp fn args True) env
+  | any isUnknownArg args = pure (processUnknownArgs fn args env True, env)
+  | otherwise = pure (x, env)
+eval (EFnApp fn args False) env
+  | any isUnknownArg args = pure (processUnknownArgs fn args env False, env)
+  | otherwise = do
   (fn',_) <- eval fn env
   case fn' of
+    EFnApp fn2 args2 True -> eval (EFnApp fn2 (args2++args) False) env --TODO: this is a bit of a hack
     EClosure params body closure -> do
       verifyArgs args
       args' <- matchParams params args env
@@ -108,13 +115,14 @@ eval (EFnApp fn args) env = do
       (res,_) <- fn bodyEnv
       pure (res,env)
     EObj obj -> case args of
+      --TODO: is the next line needed anymore?
       [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
       args'@(Arg (EId (id,ByVal)):args) -> do
         val <- envLookup id env
         case val of
           Just val -> evalApply obj args' env
           Nothing -> case args of
-            args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
+            args -> eval (EFnApp (EMemberAccess (EObj obj) id) args False) env
       args -> evalApply obj args env
     EVoid -> case args of
       [] -> pure (EVoid,env)
@@ -138,7 +146,7 @@ eval (EIf cond t f) env = do
   case cond' of
     EObj (PrimObj (PBool True) _) -> ((,env) . fst) <$> eval t env
     EObj (PrimObj (PBool False) _) -> ((,env) . fst) <$> eval f env
-    c -> throwError $ "Invalid condition for if: " ++ show c
+    c -> throwError $ "Invalid condition for if: " ++ prettyPrint c
 eval (EVarDef id val) env = envDefine id env $ do
   (val,_) <- eval val env
   val' <- lift $ (,ByVal) . EVar <$> newIORef val
@@ -148,7 +156,7 @@ eval (EAssign var val) env = do
   (val',_) <- eval val env
   case var of
     EVar var -> lift $ var $= val'
-    x -> throwError $ "Not a variable: " ++ show x
+    x -> throwError $ "Not a variable: " ++ prettyPrint x
   pure (val', env)
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
@@ -163,8 +171,17 @@ replEval (EVarDef id val) env = do
   envRedefine id (val'',ByVal) env
 replEval expr env = eval expr env
 
-call obj f args = eval (EFnApp (EMemberAccess (EObj obj) f) args)
-evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
+call obj f args = eval (EFnApp (EMemberAccess (EObj obj) f) args False)
+evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args False)
+
+processUnknownArgs :: Expr -> [Arg] -> EnvStack -> Bool -> Expr
+processUnknownArgs fn args env unspecified = EClosure (map reqParam names) (EFnApp fn (processArgs args 0) unspecified) env where
+  name i = "_" ++ [chr (i + ord 'a')]
+  names = map name [0..countBy isUnknownArg args-1]
+  processArgs [] i = []
+  processArgs (UnknownArg:args) i = (Arg (eId $ name i) : processArgs args (i+1))
+  processArgs (arg:args) i = arg : processArgs args i
+
 
 --Don't forget to evaluate the arguments too!
 matchParams :: [Param] -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
@@ -229,45 +246,6 @@ verifyArgs = verifyArgs' S.empty where
 envLookup' name env = fst <$> eval (EId (name,ByVal)) env
 
 
-startEnv :: IO EnvStack
-startEnv = envStackFromList [
-  ("-", primUnop $ onNum negate negate),
-  ("!", primUnop $ onBool not),
-  ("exit", nilop (lift exitSuccess)),
-  ("exec", EPrim [reqParam "proc", repParam "args"] $ \env -> do
-    proc <- envLookup' "proc" env
-    args <- envLookup' "args" env
-    case (proc, args) of
-      (EObj (PrimObj (PString proc) _), EObj (PrimObj (PList args) _)) -> do
-        args <- forM args $ \arg -> case arg of
-          EObj (PrimObj (PString arg) _) -> pure arg
-          _ -> throwError "Invalid argument to exec"
-        lift $ rawSystem proc args
-        pure (EVoid, env)
-      _ -> throwError "Invalid argument to exec"),
-  ("execRaw", EPrim [reqParam "proc"] $ \env -> do
-    proc <- envLookup' "proc" env
-    case proc of
-      (EObj (PrimObj (PString proc) _)) -> do
-        lift $ system proc
-        pure (EVoid, env)
-      _ -> throwError "Invalid argument to execRaw"),
-  ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure EVoid), --TODO: THIS DOESN'T WORK
-  ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid),
-  ("print", objUnop' $ \obj env -> do
-    (expr,_) <- call obj "toString" [] env
-    case expr of
-      EObj (PrimObj (PString str) _) -> lift $ putStr str
-      x -> throwError $ "toString must return a string; not " ++ prettyPrint x
-    pure EVoid),
-  ("println", objUnop' $ \obj env -> do
-    (expr,_) <- call obj "toString" [] env
-    case expr of
-      EObj (PrimObj (PString str) _) -> lift $ putStrLn str
-      x -> throwError $ "toString must return a string; not " ++ prettyPrint x
-    pure EVoid)
-  ]
-
 makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("+", primUnop $ onNum (a+) (fromInteger a+)),
@@ -289,23 +267,23 @@ makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
   ("sign", nilop $ pure (makeInt $ signum a)),
   ("logBase", primUnop $ onFloat (logBase $ fromInteger a)),
   ("atan2", primUnop $ onFloat (atan2 $ fromInteger a)),
-  ("ln", nilop . pure . makeFloat . log $ fromInteger a),
-  ("log", nilop . pure . makeFloat . (logBase 10) $ fromInteger a),
-  ("lg", nilop . pure . makeFloat . (logBase 2) $ fromInteger a),
-  ("exp", nilop . pure . makeFloat . exp $ fromInteger a),
-  ("sqrt", nilop . pure . makeFloat . sqrt $ fromInteger a),
-  ("sin", nilop . pure . makeFloat . sin $ fromInteger a),
-  ("cos", nilop . pure . makeFloat . cos $ fromInteger a),
-  ("tan", nilop . pure . makeFloat . tan $ fromInteger a),
-  ("asin", nilop . pure . makeFloat . asin $ fromInteger a),
-  ("acos", nilop . pure . makeFloat . acos $ fromInteger a),
-  ("atan", nilop . pure . makeFloat . atan $ fromInteger a),
-  ("sinh", nilop . pure . makeFloat . sinh $ fromInteger a),
-  ("cosh", nilop . pure . makeFloat . cosh $ fromInteger a),
-  ("tanh", nilop . pure . makeFloat . tanh $ fromInteger a),
-  ("asinh", nilop . pure . makeFloat . asinh $ fromInteger a),
-  ("acosh", nilop . pure . makeFloat . acosh $ fromInteger a),
-  ("atanh", nilop . pure . makeFloat . atanh $ fromInteger a)
+  ("ln", floatNilop . log $ fromInteger a),
+  ("log", floatNilop . (logBase 10) $ fromInteger a),
+  ("lg", floatNilop . (logBase 2) $ fromInteger a),
+  ("exp", floatNilop . exp $ fromInteger a),
+  ("sqrt", floatNilop . sqrt $ fromInteger a),
+  ("sin", floatNilop . sin $ fromInteger a),
+  ("cos", floatNilop . cos $ fromInteger a),
+  ("tan", floatNilop . tan $ fromInteger a),
+  ("asin", floatNilop . asin $ fromInteger a),
+  ("acos", floatNilop . acos $ fromInteger a),
+  ("atan", floatNilop . atan $ fromInteger a),
+  ("sinh", floatNilop . sinh $ fromInteger a),
+  ("cosh", floatNilop . cosh $ fromInteger a),
+  ("tanh", floatNilop . tanh $ fromInteger a),
+  ("asinh", floatNilop . asinh $ fromInteger a),
+  ("acosh", floatNilop . acosh $ fromInteger a),
+  ("atanh", floatNilop . atanh $ fromInteger a)
   ]
 makeFloat :: Double -> Expr
 makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
@@ -322,8 +300,8 @@ makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
   ("<=", primUnop $ onFloatToBool (a<=)),
   ("==", primUnop $ onFloatToBool (a==)),
   ("!=", primUnop $ onFloatToBool (a/=)),
-  ("abs", nilop $ pure . makeFloat $ abs a),
-  ("sign", nilop $ pure . makeFloat $ signum a),
+  ("abs", floatNilop $ abs a),
+  ("sign", floatNilop $ signum a),
   ("floor", nilop . pure . makeInt $ floor a),
   ("ceil", nilop . pure . makeInt $ ceiling a),
   ("truncate", nilop . pure . makeInt $ truncate a),
@@ -334,23 +312,23 @@ makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
   ("isNegativeZero", nilop . pure . makeBool $ isNegativeZero a),
   ("logBase", primUnop $ onFloat (logBase a)),
   ("atan2", primUnop $ onFloat (atan2 a)),
-  ("ln", nilop . pure . makeFloat $ log a),
-  ("log", nilop . pure . makeFloat $ (logBase 10) a),
-  ("lg", nilop . pure . makeFloat $ (logBase 2) a),
-  ("exp", nilop . pure . makeFloat $ exp a),
-  ("sqrt", nilop . pure . makeFloat $ sqrt a),
-  ("sin", nilop . pure . makeFloat $ sin a),
-  ("cos", nilop . pure . makeFloat $ cos a),
-  ("tan", nilop . pure . makeFloat $ tan a),
-  ("asin", nilop . pure . makeFloat $ asin a),
-  ("acos", nilop . pure . makeFloat $ acos a),
-  ("atan", nilop . pure . makeFloat $ atan a),
-  ("sinh", nilop . pure . makeFloat $ sinh a),
-  ("cosh", nilop . pure . makeFloat $ cosh a),
-  ("tanh", nilop . pure . makeFloat $ tanh a),
-  ("asinh", nilop . pure . makeFloat $ asinh a),
-  ("acosh", nilop . pure . makeFloat $ acosh a),
-  ("atanh", nilop . pure . makeFloat $ atanh a)
+  ("ln", floatNilop $ log a),
+  ("log", floatNilop $ (logBase 10) a),
+  ("lg", floatNilop $ (logBase 2) a),
+  ("exp", floatNilop $ exp a),
+  ("sqrt", floatNilop $ sqrt a),
+  ("sin", floatNilop $ sin a),
+  ("cos", floatNilop $ cos a),
+  ("tan", floatNilop $ tan a),
+  ("asin", floatNilop $ asin a),
+  ("acos", floatNilop $ acos a),
+  ("atan", floatNilop $ atan a),
+  ("sinh", floatNilop $ sinh a),
+  ("cosh", floatNilop $ cosh a),
+  ("tanh", floatNilop $ tanh a),
+  ("asinh", floatNilop $ asinh a),
+  ("acosh", floatNilop $ acosh a),
+  ("atanh", floatNilop $ atanh a)
   ]
 makeChar a = EObj $ PrimObj (PChar a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a))
@@ -385,8 +363,8 @@ makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ]
 
 --These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
-makeList' = EFnApp makeListPrim . map Arg
-makeTuple' = EFnApp makeTuplePrim . map Arg
+makeList' xs = EFnApp makeListPrim (map Arg xs) False
+makeTuple' xs = EFnApp makeTuplePrim (map Arg xs) False
 
 makeListPrim = EPrim [repParam "xs"] (\env -> (,env) . makeList . fromEList <$> envLookup' "xs" env)
 makeTuplePrim = EPrim [repParam "xs"] (\env -> (,env) . makeTuple . fromEList <$> envLookup' "xs" env)
@@ -408,8 +386,13 @@ nilop ret = prim [] (const ret)
 nilop' :: (EnvStack -> IOThrowsError Expr) -> Expr
 nilop' ret = prim' [] (\map env -> ret env)
 
+floatNilop = nilop . pure . makeFloat
+
 unop :: (Expr -> IOThrowsError Expr) -> Expr
 unop f = prim ["x"] $ \args -> f (args!"x")
+
+unop' :: (Expr -> EnvStack -> IOThrowsError Expr) -> Expr
+unop' f = prim' ["x"] $ \args -> f (args!"x")
 
 binop :: (Expr -> Expr -> IOThrowsError Expr) -> Expr
 binop f = prim ["x", "y"] $ \args -> f (args!"x") (args!"y")
@@ -421,7 +404,9 @@ objUnop :: (Obj -> IOThrowsError Expr) -> Expr
 objUnop f = prim ["x"] $ \args -> let EObj obj = args!"x" in f obj
 
 objUnop' :: (Obj -> EnvStack -> IOThrowsError Expr) -> Expr
-objUnop' f = prim' ["x"] $ \args env -> let EObj obj = args!"x" in f obj env
+objUnop' f = prim' ["x"] $ \args env -> case args!"x" of
+  EObj obj -> f obj env
+  _ -> throwError "Invalid argument to objUnop'"
 
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
