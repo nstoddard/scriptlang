@@ -15,7 +15,6 @@ module Scriptlang where
     Imports
     Flags - use ` as a prefix; ` is translated to - in the generated call to a command. key:val is translated to "--key val"
 
-  Fix interaction between _* and _
   Is it correct that "eval readln" doesn't work, but "eval (readln)" works?
   Improve separators:
     , shouldn't be allowed in blocks
@@ -119,7 +118,7 @@ startEnv = envStackFromList [
   ]
 
 parseEval str env = do
-  expr <- parseInput "" str parseExpr
+  expr <- parseInput "" str parseExpr desugar
   eval expr env
 
 
@@ -134,12 +133,12 @@ main = do
 
 repl env = do
   input <- replGetInput Nothing
-  expr_ <- runErrorT (parseInput "" input parseExpr)
+  expr_ <- runErrorT (parseInput "" input parseExpr desugar)
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
-      print expr
-      putStrLn (prettyPrint expr)
+      --print expr
+      --putStrLn (prettyPrint expr)
 
       res <- runErrorT (replEval expr env)
       case res of
@@ -149,17 +148,17 @@ repl env = do
           putStrLn (prettyPrint expr')
           repl env'
 
-parseInput :: String -> String -> Parsec String () a -> IOThrowsError a
-parseInput srcName input parser = case parse (parseWholeInput parser) srcName input of
+parseInput :: String -> String -> Parsec String () a -> (a->a) -> IOThrowsError a
+parseInput srcName input parser desugar = case parse (parseWholeInput parser) srcName input of
   Left err -> throwError ("Syntax error " ++ show err)
-  Right expr -> pure expr
+  Right expr -> pure $ desugar expr
 
 runFile :: String -> EnvStack -> IOThrowsError EnvStack
 runFile filename env = do
   exists <- lift $ doesFileExist filename
   if not exists then throwError ("File doesn't exist: " ++ filename) else do
   input <- lift $ Strict.readFile filename
-  exprs <- parseInput filename input parseCompound
+  exprs <- parseInput filename input parseCompound (map desugar)
   --lift $ putStrLn $ "Running file: " ++ filename
   forM_ exprs $ \expr -> do
     --lift $ print expr

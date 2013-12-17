@@ -85,7 +85,9 @@ parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+
+parseUnknown = symbol "_" *> pure EUnknown
 
 parseExec = do
   symbol "/"
@@ -95,7 +97,7 @@ parseExec = do
 
 parsePipes = do
   start <- parseNonPipeExpr
-  xs <- chainl ((:[]) <$> ((,) <$> (symbol "|" *> identifier) <*> many parseArg)) (pure (++)) []
+  xs <- chainl ((:[]) <$> ((,) <$> (symbol "|" *> identifier) <*> parseArgs)) (pure (++)) []
   let
     f obj (id,args) = EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
@@ -107,33 +109,12 @@ parseTuple = do
 
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
-  first <- parseNonFnAppExpr
-  args <- parseArgs --many parseArg <*> ((symbol "_*" *> pure True) <|> pure False)
-
-  pure $ EFnApp first args
-  {-pure $ if hasRestArgs args
-    then EPartial first args
-    else EFnApp first args-}
-
-
-{-processUnknownArgs :: Expr -> Args -> EnvStack -> Expr
-processUnknownArgs fn args env = --if hasRestArgs args
-  --then EPartial (EFn (map reqParam names) fn) (processArgs args 0) env --TODO: this should probably be a closure
-  EClosure (map reqParam names) (EFnApp fn (processArgs args 0)) env where
-  name i = "_" ++ [chr (i + ord 'a')]
-  names = map name [0..unknownArgs args-1]
-  processArgs NoArgs i = NoArgs
-  processArgs RestArgs i = RestArgs
-  processArgs (Args UnknownArg args) i = Args (Arg (eId $ name i)) (processArgs args (i+1))
-  processArgs (Args arg args) i = Args arg (processArgs args i)-}
-
-
-
-parseArgs = {-(symbol "_*" *> pure RestArgs) <|>-} ((:) <$> parseArg <*> parseArgs) <|> pure []
+  fn <- parseNonFnAppExpr
+  args <- parseArgs
+  pure (EFnApp fn args)
 
 parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg)
---parseUnknownArg = symbol "_" *> pure UnknownArg
-parseArg = {-parseUnknownArg <|> -}do
+parseArg = do
   first <- try parseNonFnAppExpr
   let
     parseListArg = ListArg <$> (symbol "*" *> pure first)
@@ -143,6 +124,10 @@ parseArg = {-parseUnknownArg <|> -}do
         EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
         _ -> mzero
   parseListArg <|> parseKeywordArg <|> pure (Arg first)
+
+parseArgs = do
+  args <- many parseArg
+  (args++) <$> ((symbol "_*" *> pure [RestArgs]) <|> pure [])
 
 parseMemberAccess = do
   first <- parseNonMemberAccess

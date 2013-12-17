@@ -108,7 +108,8 @@ data Expr =
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EClosure [Param] Expr EnvStack |
-  EIf Expr Expr Expr
+  EIf Expr Expr Expr |
+  EUnknown --Replaces UnknownArg
 
 fromEList :: Expr -> [Expr]
 fromEList (EObj (PrimObj (PList xs) _)) = xs
@@ -130,8 +131,9 @@ data AccessType = ByVal | ByName deriving (Eq,Show)
 
 data Obj = Obj Env | PrimObj PrimData Env
 
+--TODO: should I rename RepParam to ListParam for consistency with ListArg?
 data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier deriving Show
-data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] deriving Show
+data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs deriving Show
 
 type IOThrowsError = ErrorT String IO
 
@@ -139,16 +141,8 @@ reqParam name = ReqParam (name,ByVal)
 optParam name = OptParam (name,ByVal)
 repParam name = RepParam (name,ByVal)
 
-
-{-unknownArgs :: [Arg] -> Int
-unknownArgs [] = 0
-unknownArgs (UnknownArg:args) = 1 + unknownArgs args
-unknownArgs (arg:args) = unknownArgs args
-
-isUnknownArg UnknownArg = True
-isUnknownArg _ = False-}
-
 eId name = EId (name,ByVal)
+
 
 --- Pretty printer ---
 
@@ -181,6 +175,7 @@ instance Pretty Arg where
   pretty (Arg expr) = pretty expr
   pretty (KeywordArg name expr) = pretty name <//> pretty ":" <//> pretty expr
   pretty (ListArg expr) = pretty expr <//> pretty "*"
+  pretty (ListArgNoEval exprs) = pretty exprs <//> pretty "*"
 
 instance Pretty Expr where
   pretty EVoid = pretty "void"
@@ -204,6 +199,7 @@ instance Pretty Expr where
   pretty (EVar _) = pretty "<var>"
   pretty (EGetVar id) = pretty "<getVar>"
   pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
+  pretty EUnknown = pretty "_"
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x
@@ -246,6 +242,88 @@ instance Show Expr where
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
   show (EClosure a b env)  = "(EClosure " ++ show a ++ " " ++ show b ++ " " ++ "<env>" ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
+  show EUnknown            = "EUnknown"
 
 
 isOperator = not . isAlphaNum . head
+
+
+
+desugar :: Expr -> Expr
+desugar EVoid = EVoid
+desugar (EId id) = EId id
+desugar (EFnApp EUnknown []) = EUnknown
+desugar (EFnApp fn args) = processUnknownArgs (desugar fn) (map desugarArg args)
+desugar (EMemberAccess a b) = EMemberAccess (desugar a) b
+desugar prim@(EPrim {}) = prim
+desugar (EFn params body) = EFn (map desugarParam params) (desugar body)
+desugar (EDef name val) = EDef name (desugar val)
+desugar (EVarDef name val) = EVarDef name (desugar val)
+desugar (EAssign a b) = EAssign (desugar a) (desugar b)
+desugar (EVar _) = error "Can't have an EVar in desugar!"
+desugar (EGetVar _) = error "Can't have an EGetVar in desugar!"
+desugar (EMemberAccessGetVar _ _) = error "Can't have an EMemberAccessGetVar in desugar!"
+desugar (EBlock xs) = EBlock (map desugar xs)
+desugar (ENew xs) = ENew (map desugar xs)
+desugar (EWith a b) = EWith (desugar a) (desugar b)
+desugar (EObj x) = EObj x
+desugar (EClosure {}) = error "Can't have a closure in desugar!"
+desugar (EIf a b c) = EIf (desugar a) (desugar b) (desugar c)
+desugar EUnknown = EUnknown
+
+processUnknownArgs :: Expr -> [Arg] -> Expr
+--TODO: support the case where the fn is EMemberAccess and there's no params
+processUnknownArgs (EMemberAccess obj field) [] = if isUnknown obj
+  then EFn [reqParam "_a"] (EFnApp (EMemberAccess (eId "_a") field) [])
+  else EFnApp (EMemberAccess obj field) []
+processUnknownArgs fn [] = EFnApp fn []
+--TODO: remove this code duplication
+processUnknownArgs (EMemberAccess obj field) args = case (isUnknown obj, not (null unknowns), hasRestArgs) of
+  (False,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (EMemberAccess obj field) (replaceUnknowns args 0))
+  (True,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (EMemberAccess (eId "_a") field) (replaceUnknowns args 1))
+  (True,_,False) -> EFn (map reqParam unknowns) (EFnApp (EMemberAccess (eId "_a") field) (replaceUnknowns args 1))
+  (False,True,False) -> EFn (map reqParam unknowns) (EFnApp (EMemberAccess obj field) (replaceUnknowns args 0))
+  (False,False,False) -> EFnApp (EMemberAccess obj field) args
+  where
+    name i = "_" ++ [chr (i + ord 'a')]
+    objUnknowns = if isUnknown obj then 1 else 0
+    unknowns = map name [0..objUnknowns+countBy isUnknownArg args-1]
+    hasRestArgs = isRestArgs (last args)
+    replaceUnknowns [] i = []
+    replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
+    replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]
+    replaceUnknowns (arg:args) i = arg : replaceUnknowns args i
+processUnknownArgs fn args = case (isUnknown fn, not (null unknowns), hasRestArgs) of
+  (False,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp fn (replaceUnknowns args 0))
+  (True,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (eId "_a") (replaceUnknowns args 1))
+  (True,_,False) -> EFn (map reqParam unknowns) (EFnApp (eId "_a") (replaceUnknowns args 1))
+  (False,True,False) -> EFn (map reqParam unknowns) (EFnApp fn (replaceUnknowns args 0))
+  (False,False,False) -> EFnApp fn args
+  where
+    name i = "_" ++ [chr (i + ord 'a')]
+    fnUnknowns = if isUnknown fn then 1 else 0
+    unknowns = map name [0..fnUnknowns+countBy isUnknownArg args-1]
+    hasRestArgs = isRestArgs (last args)
+    replaceUnknowns [] i = []
+    replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
+    replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]
+    replaceUnknowns (arg:args) i = arg : replaceUnknowns args i
+
+isUnknown EUnknown = True
+isUnknown _ = False
+
+isUnknownArg (Arg EUnknown) = True
+isUnknownArg _ = False
+
+isRestArgs RestArgs = True
+isRestArgs _ = False
+
+desugarParam (ReqParam id) = ReqParam id
+desugarParam (OptParam id expr) = OptParam id (desugar expr)
+desugarParam (RepParam id) = RepParam id
+
+desugarArg (Arg expr) = Arg (desugar expr)
+desugarArg (KeywordArg id expr) = KeywordArg id (desugar expr)
+desugarArg (ListArg expr) = ListArg (desugar expr)
+desugarArg (ListArgNoEval {}) = error "Can't have ListArgNoEval in desugarArg!"
+desugarArg RestArgs = RestArgs

@@ -92,7 +92,6 @@ eval (EFn params body) env = do
   pure (EClosure params body env, env)
 eval (EFnApp fn args) env = do
   (fn',_) <- eval fn env
-  lift $ putStrLn $ "FN: " ++ show fn' ++ "   " ++ show args
   case fn' of
     EClosure params body closure -> do
       verifyArgs args
@@ -196,6 +195,7 @@ matchParams (OptParam (name,accessType) def:params) [] env = (:) <$> matchArg Tr
 matchParams [RepParam (name,accessType)] args env = do
   args <- concat <$> (forM args $ \arg -> case arg of
     Arg arg -> (:[]) . fst <$> eval arg env
+    ListArg xs -> getList =<< fst <$> eval xs env
     ListArgNoEval args -> pure args
     KeywordArg k arg -> throwError $ "Can't pass keyword argument to repeated parameter: " ++ prettyPrint k ++ ":" ++ prettyPrint arg)
   pure [(name, accessType, makeList args)]
@@ -231,10 +231,12 @@ verifyArgs :: [Arg] -> IOThrowsError ()
 verifyArgs = verifyArgs' S.empty where
   verifyArgs' :: Set String -> [Arg] -> IOThrowsError ()
   verifyArgs' set [] = pure ()
+  verifyArgs' set (Arg EUnknown:args) = error "UnknownArg in verifyArgs'"
   verifyArgs' set (Arg _:args) = verifyArgs' set args
   verifyArgs' set (ListArg _:args) = verifyArgs' set args
   verifyArgs' set (KeywordArg key _:args) = if S.member key set then throwError $ "Two definitions for keyword argument " ++ key
     else verifyArgs' (S.insert key set) args
+  verifyArgs' set (RestArgs:args) = error "RestArgs in verifyArgs'"
 
 
 envLookup' name env = fst <$> eval (EId (name,ByVal)) env
