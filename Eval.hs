@@ -90,16 +90,10 @@ eval (EBlock exprs) env = do
 eval (EFn params body) env = do
   verifyParams params
   pure (EClosure params body env, env)
---TODO: this is a bit of a hack
-eval x@(EFnApp fn args True) env
-  | any isUnknownArg args = pure (processUnknownArgs fn args env True, env)
-  | otherwise = pure (x, env)
-eval (EFnApp fn args False) env
-  | any isUnknownArg args = pure (processUnknownArgs fn args env False, env)
-  | otherwise = do
+eval (EFnApp fn args) env = do
   (fn',_) <- eval fn env
+  lift $ putStrLn $ "FN: " ++ show fn' ++ "   " ++ show args
   case fn' of
-    EFnApp fn2 args2 True -> eval (EFnApp fn2 (args2++args) False) env --TODO: this is a bit of a hack
     EClosure params body closure -> do
       verifyArgs args
       args' <- matchParams params args env
@@ -107,29 +101,28 @@ eval (EFnApp fn args False) env
       forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
       (res,_) <- eval body bodyEnv
       pure (res,env)
-    EPrim params fn -> do
+    EPrim params fn' -> do
       verifyArgs args
       args' <- matchParams params args env
       bodyEnv <- envNewScope =<< lift newEnvStack
       forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
-      (res,_) <- fn bodyEnv
+      (res,_) <- fn' bodyEnv
       pure (res,env)
     EObj obj -> case args of
-      --TODO: is the next line needed anymore?
       [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
       args'@(Arg (EId (id,ByVal)):args) -> do
         val <- envLookup id env
         case val of
           Just val -> evalApply obj args' env
           Nothing -> case args of
-            args -> eval (EFnApp (EMemberAccess (EObj obj) id) args False) env
+            args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
     EVoid -> case args of
       [] -> pure (EVoid,env)
       args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
     x -> throwError ("Invalid function: " ++ prettyPrint x)
 eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
-eval (EClosure {}) env = throwError "Can't evaluate closures; this should never happen"
+eval closure@(EClosure {}) env = pure (closure,env)--throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do
   env' <- envNewScope env
   forM_ exprs $ \expr -> eval expr env'
@@ -171,32 +164,44 @@ replEval (EVarDef id val) env = do
   envRedefine id (val'',ByVal) env
 replEval expr env = eval expr env
 
-call obj f args = eval (EFnApp (EMemberAccess (EObj obj) f) args False)
-evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args False)
-
-processUnknownArgs :: Expr -> [Arg] -> EnvStack -> Bool -> Expr
-processUnknownArgs fn args env unspecified = EClosure (map reqParam names) (EFnApp fn (processArgs args 0) unspecified) env where
-  name i = "_" ++ [chr (i + ord 'a')]
-  names = map name [0..countBy isUnknownArg args-1]
-  processArgs [] i = []
-  processArgs (UnknownArg:args) i = (Arg (eId $ name i) : processArgs args (i+1))
-  processArgs (arg:args) i = arg : processArgs args i
+call obj f args = eval (EFnApp (EMemberAccess (EObj obj) f) args)
+evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 
 
---Don't forget to evaluate the arguments too!
+matchArg :: Bool -> String -> AccessType -> Expr -> EnvStack -> IOThrowsError (String,AccessType,Expr)
+matchArg evaluate name accessType arg env = do
+  (arg',_) <- case accessType of
+    ByVal -> if evaluate then eval arg env else pure (arg,env)
+    ByName -> pure (arg, env)
+  pure (name,accessType,arg')
+
+matchParams' :: [Param] -> Expr -> [Arg] -> Bool -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
+matchParams' (ReqParam (name,accessType)  :params) arg args evaluate env = (:) <$> matchArg evaluate name accessType arg env <*> matchParams params args env
+matchParams' (OptParam (name,accessType) _:params) arg args evaluate env = (:) <$> matchArg evaluate name accessType arg env <*> matchParams params args env
+
+
 matchParams :: [Param] -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
 matchParams [] [] _ = pure []
-matchParams params_@(ReqParam (name,accessType)  :params) (Arg arg:args) env = evalParams params_ arg args env
-matchParams params_@(OptParam (name,accessType) _:params) (Arg arg:args) env = evalParams params_ arg args env
-matchParams (OptParam (name,accessType) def:params) [] env = (:) <$> evalArg name accessType def env <*> matchParams params [] env
+matchParams params@(ReqParam {}:_) (Arg arg:args) env = matchParams' params arg args True env
+matchParams params@(OptParam {}:_) (Arg arg:args) env = matchParams' params arg args True env
+matchParams params (ListArgNoEval []:args) env = matchParams params args env
+matchParams params@(ReqParam {}:_) (ListArgNoEval (arg:lArgs):args) env = do
+  matchParams' params arg (ListArgNoEval lArgs:args) False env
+matchParams params@(OptParam {}:_) (ListArgNoEval (arg:lArgs):args) env = do
+  matchParams' params arg (ListArgNoEval lArgs:args) False env
+matchParams params (ListArg xs:args) env = do
+  listArgs <- getList =<< fst <$> eval xs env
+  matchParams params (ListArgNoEval listArgs:args) env
+matchParams (OptParam (name,accessType) def:params) [] env = (:) <$> matchArg True name accessType def env <*> matchParams params [] env
 matchParams [RepParam (name,accessType)] args env = do
-  args <- forM args $ \arg -> case arg of
-    Arg arg -> fst <$> eval arg env
-    KeywordArg k arg -> throwError $ "Can't pass keyword argument to repeated parameter: " ++ prettyPrint k ++ ":" ++ prettyPrint arg
+  args <- concat <$> (forM args $ \arg -> case arg of
+    Arg arg -> (:[]) . fst <$> eval arg env
+    ListArgNoEval args -> pure args
+    KeywordArg k arg -> throwError $ "Can't pass keyword argument to repeated parameter: " ++ prettyPrint k ++ ":" ++ prettyPrint arg)
   pure [(name, accessType, makeList args)]
 matchParams params_ (KeywordArg k arg:args) env = do
   params <- takeKeywordArg params_ k
-  evalParams params arg args env
+  matchParams' params arg args True env
 matchParams params [] env = throwError $ "Not enough arguments for function; unspecified arguments: " ++ intercalate ", " (map prettyPrint params)
 matchParams [] args env = throwError $ "Too many arguments for function; extra arguments: " ++ intercalate ", " (map prettyPrint args)
 matchParams params args env = throwError $ "matchParams unimplemented for " ++ show (params,args)
@@ -211,18 +216,6 @@ takeKeywordArg params name = case length match of
       ReqParam (name',_)   -> name == name'
       OptParam (name',_) _ -> name == name'
 
-
-evalParams :: [Param] -> Expr -> [Arg] -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
-evalParams (ReqParam (name,accessType)  :params) arg args env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
-evalParams (OptParam (name,accessType) _:params) arg args env = (:) <$> evalArg name accessType arg env <*> matchParams params args env
-
-
-evalArg :: String -> AccessType -> Expr -> EnvStack -> IOThrowsError (String,AccessType,Expr)
-evalArg name accessType arg env = do
-  (arg',_) <- case accessType of
-    ByVal -> eval arg env
-    ByName -> pure (arg, env)
-  pure (name,accessType,arg')
 
 verifyParams :: [Param] -> IOThrowsError ()
 verifyParams = verifyParams' S.empty where
@@ -239,6 +232,7 @@ verifyArgs = verifyArgs' S.empty where
   verifyArgs' :: Set String -> [Arg] -> IOThrowsError ()
   verifyArgs' set [] = pure ()
   verifyArgs' set (Arg _:args) = verifyArgs' set args
+  verifyArgs' set (ListArg _:args) = verifyArgs' set args
   verifyArgs' set (KeywordArg key _:args) = if S.member key set then throwError $ "Two definitions for keyword argument " ++ key
     else verifyArgs' (S.insert key set) args
 
@@ -362,9 +356,12 @@ makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("apply", primUnop $ onInt' (index a))
   ]
 
+getList (EObj (PrimObj (PList xs) _)) = pure xs
+getList x = throwError $ "Not a list: " ++ prettyPrint x
+
 --These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
-makeList' xs = EFnApp makeListPrim (map Arg xs) False
-makeTuple' xs = EFnApp makeTuplePrim (map Arg xs) False
+makeList' xs = EFnApp makeListPrim (map Arg xs)
+makeTuple' xs = EFnApp makeTuplePrim (map Arg xs)
 
 makeListPrim = EPrim [repParam "xs"] (\env -> (,env) . makeList . fromEList <$> envLookup' "xs" env)
 makeTuplePrim = EPrim [repParam "xs"] (\env -> (,env) . makeTuple . fromEList <$> envLookup' "xs" env)

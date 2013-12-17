@@ -15,7 +15,6 @@ module Scriptlang where
     Imports
     Flags - use ` as a prefix; ` is translated to - in the generated call to a command. key:val is translated to "--key val"
 
-
   Fix interaction between _* and _
   Is it correct that "eval readln" doesn't work, but "eval (readln)" works?
   Improve separators:
@@ -139,8 +138,8 @@ repl env = do
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
-      --print expr
-      --putStrLn (prettyPrint expr)
+      print expr
+      putStrLn (prettyPrint expr)
 
       res <- runErrorT (replEval expr env)
       case res of

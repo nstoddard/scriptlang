@@ -102,8 +102,7 @@ data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString
 
 data Expr =
   EVoid |
-  --TODO: should EFnApp be split into 2 cases, one where all arguments have been provided and one where they haven't?
-  EId Identifier | EFnApp Expr [Arg] Bool | EMemberAccess Expr String |
+  EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EPrim [Param] (EnvStack -> IOThrowsError (Expr,EnvStack)) | EFn [Param] Expr |
   EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
@@ -118,7 +117,7 @@ fromEList xs = error $ "Internal error: not a list: " ++ show xs
 getVar :: Expr -> Maybe Expr
 getVar (EId id) = pure $ EGetVar id
 getVar (EMemberAccess expr id) = pure $ EMemberAccessGetVar expr id
-getVar (EFnApp f [] _) = getVar f --TODO: is this line still needed?
+getVar (EFnApp f []) = getVar f --TODO: is this line still needed?
 getVar _ = Nothing
 
 getExprEnv :: Expr -> IOThrowsError EnvStack
@@ -132,16 +131,22 @@ data AccessType = ByVal | ByName deriving (Eq,Show)
 data Obj = Obj Env | PrimObj PrimData Env
 
 data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier deriving Show
-data Arg = Arg Expr | KeywordArg String Expr | UnknownArg deriving Show
+data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] deriving Show
 
 type IOThrowsError = ErrorT String IO
-
-isUnknownArg UnknownArg = True
-isUnknownArg _ = False
 
 reqParam name = ReqParam (name,ByVal)
 optParam name = OptParam (name,ByVal)
 repParam name = RepParam (name,ByVal)
+
+
+{-unknownArgs :: [Arg] -> Int
+unknownArgs [] = 0
+unknownArgs (UnknownArg:args) = 1 + unknownArgs args
+unknownArgs (arg:args) = unknownArgs args
+
+isUnknownArg UnknownArg = True
+isUnknownArg _ = False-}
 
 eId name = EId (name,ByVal)
 
@@ -175,19 +180,18 @@ instance Pretty Param where
 instance Pretty Arg where
   pretty (Arg expr) = pretty expr
   pretty (KeywordArg name expr) = pretty name <//> pretty ":" <//> pretty expr
-  pretty UnknownArg = pretty "_"
+  pretty (ListArg expr) = pretty expr <//> pretty "*"
 
 instance Pretty Expr where
   pretty EVoid = pretty "void"
   pretty (EId (id,accessType)) = pretty accessType <//> pretty id
-  pretty (EFnApp f [] False) = pretty f
-  pretty (EFnApp f args False) = pretty "(" <//> pretty f </> hsep (map pretty args) <//> pretty ")"
-  pretty (EFnApp f args True)  = pretty "(" <//> pretty f </> hsep (map pretty args) </> pretty "_*" <//> pretty ")"
+  pretty (EFnApp f []) = pretty f
+  pretty (EFnApp f args) = pretty "(" <//> pretty f </> pretty args <//> pretty ")"
   pretty (EMemberAccess obj id) = if isOperator id
     then pretty obj </> pretty id
     else pretty obj <//> pretty "." <//> pretty id
   pretty (EPrim _ _) = pretty "<prim>"
-  pretty (EFn params body) = hsep (map pretty params) </> pretty "=>" </> pretty body
+  pretty (EFn params body) = pretty "(" <//> hsep (map pretty params) </> pretty "=>" </> pretty body <//> pretty ")"
   pretty (EDef id val) = pretty id </> pretty "=" </> pretty val
   pretty (EVarDef id val) = pretty "var" </> pretty id </> pretty "<-" </> pretty val
   pretty (EAssign var val) = pretty var </> pretty "<-" </> pretty val
@@ -195,7 +199,7 @@ instance Pretty Expr where
   pretty (ENew xs) = pretty "(" <//> pretty "new" </> prettyBlock xs <//> pretty ")"
   pretty (EWith a b) = pretty a </> pretty "with" </> pretty b
   pretty (EObj obj) = pretty obj
-  pretty (EClosure {}) = pretty "<closure>"
+  pretty (EClosure params expr env) = pretty "(closure" </> pretty params </> pretty expr <//> pretty ")"
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
   pretty (EVar _) = pretty "<var>"
   pretty (EGetVar id) = pretty "<getVar>"
@@ -226,7 +230,7 @@ instance Show Obj where
 instance Show Expr where
   show EVoid               = "(EVoid" ++ ")"
   show (EId x)             = "(EId " ++ show x ++ ")"
-  show (EFnApp x xs y)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ " " ++ show y ++ ")"
+  show (EFnApp x xs)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ " " ++ ")"
   show (EMemberAccess x y) = "(EMemberAccess " ++ show x ++ " " ++ show y ++ ")"
   show (EPrim _ _)         = "(EPrim <prim>" ++ ")"
   show (EFn params body)   = "(EFn " ++ show params ++ " " ++ show body ++ ")"
@@ -240,9 +244,8 @@ instance Show Expr where
   show (ENew x)            = "(ENew " ++ show x ++ ")"
   show (EWith a b)         = "(EWith " ++ show a ++ " " ++ show b ++ ")"
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
-  show (EClosure a b c)    = "(EClosure " ++ show a ++ " " ++ show b ++ " " ++ "<env>" ++ ")"
+  show (EClosure a b env)  = "(EClosure " ++ show a ++ " " ++ show b ++ " " ++ "<env>" ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
-
 
 
 isOperator = not . isAlphaNum . head

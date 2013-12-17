@@ -1,7 +1,7 @@
 pi = 3.141592653589793238462643383279
 tau = 2*pi
 
-sumUpTo n -> (n * (n+1)) div 2
+  sumUpTo n -> (n * (n+1)) div 2
 fac n -> if (n==0) 1 else n * fac (n-1)
 
 
@@ -31,4 +31,7 @@ opt ?a=0 ?b=1 ?c=2 -> (a,b,c)
 mkAccum n -> {var s <- n; i => s <- s+i}
 
 
-color2 = color 0.5 0.6 _*
+//color2 = color 0.5 0.6 _*
+
+
+list2 xs* -> list xs*

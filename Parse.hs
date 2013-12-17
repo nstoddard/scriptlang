@@ -90,14 +90,14 @@ parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, 
 parseExec = do
   symbol "/"
   str <- some (noneOf separators) --TODO: this doesn't support comments!
-  pure (EFnApp (eId "execRaw") [Arg $ makeString str] False)
+  pure (EFnApp (eId "execRaw") [Arg $ makeString str])
 
 
 parsePipes = do
   start <- parseNonPipeExpr
   xs <- chainl ((:[]) <$> ((,) <$> (symbol "|" *> identifier) <*> many parseArg)) (pure (++)) []
   let
-    f obj (id,args) = EFnApp (EMemberAccess obj id) args False
+    f obj (id,args) = EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
 
 parseList = makeList' <$> (grouper '[' *> sepEndBy parseExpr separator <* grouper ']')
@@ -108,19 +108,41 @@ parseTuple = do
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do
   first <- parseNonFnAppExpr
-  EFnApp first <$> many parseArg <*> ((symbol "_*" *> pure True) <|> pure False)
+  args <- parseArgs --many parseArg <*> ((symbol "_*" *> pure True) <|> pure False)
 
-parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg) <*> pure False
-parseUnknownArg = symbol "_" *> pure UnknownArg
-parseArg = parseUnknownArg <|> do
+  pure $ EFnApp first args
+  {-pure $ if hasRestArgs args
+    then EPartial first args
+    else EFnApp first args-}
+
+
+{-processUnknownArgs :: Expr -> Args -> EnvStack -> Expr
+processUnknownArgs fn args env = --if hasRestArgs args
+  --then EPartial (EFn (map reqParam names) fn) (processArgs args 0) env --TODO: this should probably be a closure
+  EClosure (map reqParam names) (EFnApp fn (processArgs args 0)) env where
+  name i = "_" ++ [chr (i + ord 'a')]
+  names = map name [0..unknownArgs args-1]
+  processArgs NoArgs i = NoArgs
+  processArgs RestArgs i = RestArgs
+  processArgs (Args UnknownArg args) i = Args (Arg (eId $ name i)) (processArgs args (i+1))
+  processArgs (Args arg args) i = Args arg (processArgs args i)-}
+
+
+
+parseArgs = {-(symbol "_*" *> pure RestArgs) <|>-} ((:) <$> parseArg <*> parseArgs) <|> pure []
+
+parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg)
+--parseUnknownArg = symbol "_" *> pure UnknownArg
+parseArg = {-parseUnknownArg <|> -}do
   first <- try parseNonFnAppExpr
   let
+    parseListArg = ListArg <$> (symbol "*" *> pure first)
     parseKeywordArg = do
       symbol ":"
       case first of
         EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
         _ -> mzero
-  parseKeywordArg <|> pure (Arg first)
+  parseListArg <|> parseKeywordArg <|> pure (Arg first)
 
 parseMemberAccess = do
   first <- parseNonMemberAccess
@@ -167,11 +189,11 @@ opTable = [
 op startChar = [binopL startChar, binopR startChar]
 binopL startChar = Infix (try $ do
   name <- operator startChar False
-  pure (\a b -> EFnApp (EMemberAccess a name) [Arg b] False)
+  pure (\a b -> EFnApp (EMemberAccess a name) [Arg b])
   ) AssocLeft
 binopR startChar = Infix (try $ do
   name <- operator startChar True
-  pure (\a b -> EFnApp (EMemberAccess b name) [Arg a] False) --We swap a and b here intentionally
+  pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
   ) AssocRight
 
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":", "_", "_*", "."]
