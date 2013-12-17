@@ -51,7 +51,7 @@ parseDef = do
   let
     parseValDef = EDef id <$> (symbol "=" *> parseExpr)
     parseFnDef = do
-      params <- many parseParam
+      params <- parseParams
       body <- symbol "->" *> parseExpr
       pure $ EDef id (EFn params body)
   parseValDef <|> parseFnDef
@@ -69,10 +69,13 @@ block = grouper '{' *> many separator *> sepEndBy parseExpr (some separator) <* 
 parseCompound = many separator *> sepEndBy parseExpr (some separator)
 
 
-parseParam = asum [parseOptParam, try parseRepParam, parseReqParam]
-parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
-parseRepParam = RepParam <$> identifier' <* symbol "*"
-parseReqParam = ReqParam <$> identifier'
+parseParams = parseParams' <|> pure [] where
+  parseParams' = ((:) <$> parseOptParam <*> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> parseReqParam <*> parseParams)
+  parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
+  parseRepParam = RepParam <$> identifier' <* symbol "*"
+  parseReqParam = ReqParam <$> identifier'
+
+
 
 
 parseExpr = parseVarDef <|> try parseDef <|> tryParseAssign
@@ -148,7 +151,7 @@ parseIf = do
 parseElse = anyWhiteSpace *> keyword "else" *> parseExpr
 
 parseFn = do
-  params <- many parseParam
+  params <- parseParams
   body <- symbol "=>" *> parseExpr
   pure (EFn params body)
 
