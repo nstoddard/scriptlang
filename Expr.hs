@@ -181,7 +181,7 @@ instance Pretty Expr where
   pretty EVoid = pretty "void"
   pretty (EId (id,accessType)) = pretty accessType <//> pretty id
   pretty (EFnApp f []) = pretty f
-  pretty (EFnApp f args) = pretty "(" <//> pretty f </> pretty args <//> pretty ")"
+  pretty (EFnApp f args) = pretty "(" <//> pretty f </> hsep (map pretty args) <//> pretty ")"
   pretty (EMemberAccess obj id) = if isOperator id
     then pretty obj </> pretty id
     else pretty obj <//> pretty "." <//> pretty id
@@ -194,7 +194,7 @@ instance Pretty Expr where
   pretty (ENew xs) = pretty "(" <//> pretty "new" </> prettyBlock xs <//> pretty ")"
   pretty (EWith a b) = pretty a </> pretty "with" </> pretty b
   pretty (EObj obj) = pretty obj
-  pretty (EClosure params expr env) = pretty "(closure" </> pretty params </> pretty expr <//> pretty ")"
+  pretty (EClosure params body env) = pretty (EFn params body)
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
   pretty (EVar _) = pretty "<var>"
   pretty (EGetVar id) = pretty "<getVar>"
@@ -261,8 +261,8 @@ desugar (EDef name val) = EDef name (desugar val)
 desugar (EVarDef name val) = EVarDef name (desugar val)
 desugar (EAssign a b) = EAssign (desugar a) (desugar b)
 desugar (EVar _) = error "Can't have an EVar in desugar!"
-desugar (EGetVar _) = error "Can't have an EGetVar in desugar!"
-desugar (EMemberAccessGetVar _ _) = error "Can't have an EMemberAccessGetVar in desugar!"
+desugar (EGetVar id) = EGetVar id
+desugar (EMemberAccessGetVar a b) = EMemberAccessGetVar (desugar a) b
 desugar (EBlock xs) = EBlock (map desugar xs)
 desugar (ENew xs) = ENew (map desugar xs)
 desugar (EWith a b) = EWith (desugar a) (desugar b)

@@ -171,7 +171,9 @@ matchArg :: Bool -> String -> AccessType -> Expr -> EnvStack -> IOThrowsError (S
 matchArg evaluate name accessType arg env = do
   (arg',_) <- case accessType of
     ByVal -> if evaluate then eval arg env else pure (arg,env)
-    ByName -> pure (arg, env)
+    ByName -> case arg of
+      (EId (_,ByName)) -> if evaluate then eval arg env else pure (arg,env) --We must evaluate in this case or we end up trying to treat an identifier as a value when calling a function with something prefixed with ~, as occurs in "while"
+      _ -> pure (arg, env)
   pure (name,accessType,arg')
 
 matchParams' :: [Param] -> Expr -> [Arg] -> Bool -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]

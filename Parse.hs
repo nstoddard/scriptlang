@@ -150,7 +150,7 @@ parseIf = do
   t <- parseNonIf
   f <- parseElse <|> pure EVoid
   pure (EIf cond t f)
-parseElse = anyWhiteSpace *> keyword "else" *> parseExpr
+parseElse = try (anyWhiteSpace *> keyword "else") *> parseExpr
 
 parseFn = do
   params <- parseParams

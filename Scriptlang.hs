@@ -3,6 +3,13 @@
 module Scriptlang where
 
 {- TODO
+  For current version:
+    Map, filter, etc should be methods on lists, not functions
+    More I/O
+    Glob syntax and regexes
+    Command history
+    Interfacing between scripts - this should be fairly easy
+
   In later versions:
     Types and pattern matching
     Generators
@@ -14,28 +21,22 @@ module Scriptlang where
     Reflection - checking which fields, methods, etc an object supportss
     Imports
     Flags - use ` as a prefix; ` is translated to - in the generated call to a command. key:val is translated to "--key val"
-
-  Make sure _ and especially _* work properly with by-name parameters.
-  To implement:
-    Map, filter, etc should be methods on lists, not functions
+    Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
+    Should it be possible to overload assignment?
+    Add fields - like Scala's getters and setters
+    Treat functions as objects with an "apply" method and "o" as a composition operator
+    Make sure _ and especially _* work properly with by-name parameters.
     Function overloading
     Line numbers for errors
-    More I/O
     Add a method to be called when a method isn't defined
-    Glob syntax and regexes
-    Command history
     Cloning of objects?
-    Interfacing between scripts - this should be fairly easy
-    Treat functions as objects with an "apply" method and "o" as a composition operator
-    Loops?
-  Hide internal details
-    3 + []
-  Improve syntax errors
+
+  Improve error messages
+    Doing primitive operations on unsupported types, such as "3 + []"
+    Improve parse errors
+
   Do by-name optional parameters make sense?
   Disallow ~ on everything but parameters - zero-argument functions have replaced them
-  Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
-  Should it be possible to overload assignment?
-  Add fields - like Scala's getters and setters
 -}
 
 import Data.List
