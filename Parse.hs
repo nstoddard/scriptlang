@@ -62,12 +62,14 @@ parseVarDef = do
   val <- (symbol "<-" *> parseExpr) <|> pure EVoid
   pure $ EVarDef name val
 
-separators = ";,\n"
-separator = lexeme (oneOf separators)
-parseBlock = EBlock <$> block
-block = grouper '{' *> many separator *> sepEndBy parseExpr (some separator) <* grouper '}'
-parseCompound = many separator *> sepEndBy parseExpr (some separator)
+statementSeparator = lexeme (oneOf ";,\n")
+listSeparator = anyWhiteSpace *> oneOf ";," *> anyWhiteSpace
 
+parseBlock = EBlock <$> block
+block = grouper '{' *> sepStartEndBy parseExpr (some statementSeparator) <* grouper '}'
+parseCompound = sepStartEndBy parseExpr (some statementSeparator)
+
+sepStartEndBy parser sep = many sep *> sepEndBy parser sep
 
 parseParams = parseParams' <|> pure [] where
   parseParams' = ((:) <$> parseOptParam <*> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> parseReqParam <*> parseParams)
@@ -94,7 +96,7 @@ parseUnknown = symbol "_" *> pure EUnknown
 
 parseExec = do
   symbol "/"
-  str <- some (noneOf separators) --TODO: this doesn't support comments!
+  str <- some (noneOf "\n") --TODO: this doesn't support comments!
   pure (EFnApp (eId "execRaw") [Arg $ makeString str])
 
 
@@ -105,10 +107,10 @@ parsePipes = do
     f obj (id,args) = EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
 
-parseList = makeList' <$> (grouper '[' *> sepEndBy parseExpr separator <* grouper ']')
+parseList = makeList' <$> (grouper '[' *> anyWhiteSpace *> sepEndBy parseExpr listSeparator <* grouper ']')
 parseTuple = do
-  first <- grouper '(' *> parseExpr
-  (grouper ')' *> pure first) <|> (makeTuple' . (first:) <$> (separator *> sepEndBy parseExpr separator <* grouper ')'))
+  first <- grouper '(' *> anyWhiteSpace *> parseExpr
+  (grouper ')' *> pure first) <|> (makeTuple' . (first:) <$> (listSeparator *> sepEndBy parseExpr listSeparator <* grouper ')'))
 
 parseFnApp = parseNormalFnApp <|> parsePrefixOp
 parseNormalFnApp = do

@@ -15,12 +15,7 @@ module Scriptlang where
     Imports
     Flags - use ` as a prefix; ` is translated to - in the generated call to a command. key:val is translated to "--key val"
 
-  Is it correct that "eval readln" doesn't work, but "eval (readln)" works?
-  Improve separators:
-    , shouldn't be allowed in blocks
-    ; shouldn't be allowed in lists, tuples, etc
-    \n shouldn't be treated as a separator in lists, tuples, etc
-    leading \n should be allowed in lists, tuples, etc
+  Make sure _ and especially _* work properly with by-name parameters.
   To implement:
     Map, filter, etc should be methods on lists, not functions
     Function overloading
