@@ -30,6 +30,7 @@ module Scriptlang where
     Line numbers for errors
     Add a method to be called when a method isn't defined
     Cloning of objects?
+    Get rid of EValClosure - it's only used for by-name parameters, so the two features can probably be merged
 
   Improve error messages
     Doing primitive operations on unsupported types, such as "3 + []"

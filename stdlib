@@ -33,3 +33,18 @@ mkAccum n -> {var s <- n; i => s <- s+i}
 list2 xs* -> list xs*
 
 while ~cond ~f -> if cond {f; while ~cond ~f}
+
+fizzbuzz -> {
+  var i <- 1
+  while (i <= 100) {
+    if (i%15==0)
+      println "FizzBuzz"
+    else if (i%5==0)
+      println "Buzz"
+    else if (i%3==0)
+      println "Fizz"
+    else
+      println i
+    i <- i+1
+  }
+}

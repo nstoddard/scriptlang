@@ -107,7 +107,7 @@ data Expr =
   EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
-  EClosure [Param] Expr EnvStack |
+  EClosure [Param] Expr EnvStack | EValClosure Expr EnvStack |
   EIf Expr Expr Expr |
   EUnknown --Replaces UnknownArg
 

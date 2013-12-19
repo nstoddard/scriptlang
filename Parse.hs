@@ -147,10 +147,10 @@ parseWith = do
 
 parseIf = do
   cond <- keyword "if" *> parseSingleTokenExpr
-  t <- parseNonIf
+  t <- anyWhiteSpace *> parseNonIf
   f <- parseElse <|> pure EVoid
   pure (EIf cond t f)
-parseElse = try (anyWhiteSpace *> keyword "else") *> parseExpr
+parseElse = try (anyWhiteSpace *> keyword "else") *> anyWhiteSpace *> parseExpr
 
 parseFn = do
   params <- parseParams

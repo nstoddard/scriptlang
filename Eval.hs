@@ -150,6 +150,7 @@ eval (EAssign var val) env = do
     EVar var -> lift $ var $= val'
     x -> throwError $ "Not a variable: " ++ prettyPrint x
   pure (val', env)
+eval (EValClosure expr closure) env = (,env) . fst <$> eval expr closure
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
@@ -170,10 +171,10 @@ evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 matchArg :: Bool -> String -> AccessType -> Expr -> EnvStack -> IOThrowsError (String,AccessType,Expr)
 matchArg evaluate name accessType arg env = do
   (arg',_) <- case accessType of
-    ByVal -> if evaluate then eval arg env else pure (arg,env)
+    ByVal -> if evaluate then eval arg env else pure (EValClosure arg env,env)
     ByName -> case arg of
-      (EId (_,ByName)) -> if evaluate then eval arg env else pure (arg,env) --We must evaluate in this case or we end up trying to treat an identifier as a value when calling a function with something prefixed with ~, as occurs in "while"
-      _ -> pure (arg, env)
+      (EId (_,ByName)) -> if evaluate then eval arg env else pure (EValClosure arg env,env) --We must evaluate in this case or we end up trying to treat an identifier as a value when calling a function with something prefixed with ~, as occurs in "while"
+      _ -> pure (EValClosure arg env, env)
   pure (name,accessType,arg')
 
 matchParams' :: [Param] -> Expr -> [Arg] -> Bool -> EnvStack -> IOThrowsError [(String,AccessType,Expr)]
