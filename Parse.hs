@@ -163,19 +163,20 @@ parseFalse = keyword "False" *> pure (makeBool False)
 parseVoid = keyword "void" *> pure EVoid
 
 
-
-opTable = [
-  op '*' ++ op '/' ++ op '%',
-  op '+' ++ op '-',
-  op ':',
-  op '=' ++ op '!',
-  op '<' ++ op '>',
-  op '&',
-  op '^',
-  op '|',
-  --TODO: figure out precedence of these chars:
-  op '?' ++ op '\\' ++ op '`' ++ op '~' ++ op '@' ++ op '#' ++ op '$' ++ op '_'
+ops = [
+  "*/%",
+  "+-",
+  ":",
+  "=!",
+  "<>",
+  "&",
+  "^",
+  "|",
+  "?\\`~@#$"
   ]
+
+opTable = concatMap (map op) ops
+
 op startChar = [binopL startChar, binopR startChar]
 binopL startChar = Infix (try $ do
   name <- operator startChar False
@@ -186,8 +187,9 @@ binopR startChar = Infix (try $ do
   pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
   ) AssocRight
 
-reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":", "_", "_*", "."]
-builtinOps = reservedOps ++ ["*", "/"]
+opChars = "/<>?:\\|`~!@#$%^&*+-="
+reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
+builtinOps = reservedOps ++ ["*", "/", "_", "_*", "."]
 keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]
 
 groupChars = "()[]{}"
@@ -199,8 +201,6 @@ identifier = (do
   val <- lexeme $ (:) <$> identStart <*> many identChar
   if val `elem` keywords then mzero else pure val) <?> "identifier"
 
-
-opChars = "/<>?:\\|`~!@#$%^&*_+-="
 
 
 operator' = (do

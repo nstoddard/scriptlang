@@ -200,6 +200,7 @@ instance Pretty Expr where
   pretty (EGetVar id) = pretty "<getVar>"
   pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
   pretty EUnknown = pretty "_"
+  pretty (EValClosure expr env) = pretty expr
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x

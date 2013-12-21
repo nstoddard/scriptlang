@@ -4,11 +4,25 @@ module Scriptlang where
 
 {- TODO
   For current version:
+    ls, cd, pwd, and a whole bunch of other commands should work properly
     Map, filter, etc should be methods on lists, not functions
     More I/O
     Glob syntax and regexes
     Command history
     Interfacing between scripts - this should be fairly easy
+
+  Running other programs:
+    ls `a
+    ls 'a
+    ls -a
+    ls \a
+  Use 3rd one; this can be made syntactically unambiguous with these rules:
+    a + b - applying the "+" operator to a with b as the argument
+    a+b - same thing
+    a +b - calling the function a with "+b" as an argument
+    a+ b - invalid
+  Note that with this syntax, "f -5" doesn't call f with -5 as the argument, it calls f with a flag of "5" as the argument. You'd have to write "f (-5)".
+  1+2 * 3+4 != 1 + 2*3 + 4
 
   In later versions:
     Types and pattern matching
@@ -25,6 +39,7 @@ module Scriptlang where
     Should it be possible to overload assignment?
     Add fields - like Scala's getters and setters
     Treat functions as objects with an "apply" method and "o" as a composition operator
+      They should also have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
     Make sure _ and especially _* work properly with by-name parameters.
     Function overloading
     Line numbers for errors
@@ -111,7 +126,11 @@ startEnv = envStackFromList [
   ("readln", nilop $ makeString <$> lift getLine),
   ("eval", objUnop' $ \obj env -> case obj of
     PrimObj (PString str) _ -> fst <$> parseEval str env
-    x -> throwError $ "Can't evaluate non-string: " ++ prettyPrint x)
+    x -> throwError $ "Can't evaluate non-string: " ++ prettyPrint x),
+  ("cd", stringUnop $ \str -> do
+    lift $ setCurrentDirectory str
+    makeString <$> lift getCurrentDirectory),
+  ("wd", nilop $ makeString <$> lift getCurrentDirectory)
   ]
 
 parseEval str env = do
@@ -121,7 +140,7 @@ parseEval str env = do
 
 main = do
   env <- startEnv
-  env <- runErrorT $ runFile "stdlib" env
+  env <- runErrorT $ envNewScope =<< runFile "stdlib" env
   case env of
     Left err -> putStrLn err
     Right env -> repl env

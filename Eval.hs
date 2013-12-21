@@ -44,19 +44,38 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
   case val of
     Nothing -> throwError $ notFoundMsg ++ id
     Just (val, accessType2) -> do
-      (val,env) <- case (accessType,accessType2) of
-        (ByVal, ByVal) -> pure (val,env)
-        (ByVal, ByName) -> eval val env
-        (ByName, ByName) -> pure (val,env)
+      val <- case (accessType,accessType2) of
+        (ByVal, ByVal) -> pure val
+        (ByVal, ByName) -> fst <$> eval val env
+        (ByName, ByName) -> pure val
         (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
       if derefVars then (case val of
         EVar var -> (,env) <$> lift (get var)
         val -> pure (val,env))
       else pure (val,env)
 
+maybeEvalID derefVars (EId (id,accessType)) env = do
+  val <- envLookup id env
+  case val of
+    Nothing -> pure Nothing
+    Just (val, accessType2) -> do
+      val <- case (accessType,accessType2) of
+        (ByVal, ByVal) -> pure val
+        (ByVal, ByName) -> fst <$> eval val env
+        (ByName, ByName) -> pure val
+        (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
+      if derefVars then (case val of
+        EVar var -> Just <$> lift (get var)
+        val -> pure $ Just val)
+      else pure $ Just val
+
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 eval EVoid env = pure (EVoid, env)
-eval id@(EId {}) env = evalID True id "Identifier not found: " env
+eval id@(EId {}) env = do
+  id <- maybeEvalID True id env --"Identifier not found: "
+  case id of
+    Just id -> pure (id, env)
+    Nothing -> throwError "TODO: implement running other programs"
 eval (EGetVar var) env = evalID False (EId var) "Variable not found: " env
 eval (EMemberAccess obj id) env = do
   obj <- eval obj env
@@ -409,6 +428,11 @@ objUnop' :: (Obj -> EnvStack -> IOThrowsError Expr) -> Expr
 objUnop' f = prim' ["x"] $ \args env -> case args!"x" of
   EObj obj -> f obj env
   _ -> throwError "Invalid argument to objUnop'"
+
+stringUnop :: (String -> IOThrowsError Expr) -> Expr
+stringUnop f = objUnop $ \obj -> case obj of
+  PrimObj (PString str) _ -> f str
+  _ -> throwError "Invalid argument to stringUnop"
 
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
