@@ -72,10 +72,11 @@ parseCompound = sepStartEndBy parseExpr (some statementSeparator)
 sepStartEndBy parser sep = many sep *> sepEndBy parser sep
 
 parseParams = parseParams' <|> pure [] where
-  parseParams' = ((:) <$> parseOptParam <*> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> parseReqParam <*> parseParams)
+  parseParams' = ((:) <$> parseOptParam <*> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> try parseFlagParam <*> parseParams) <|> ((:) <$> parseReqParam <*> parseParams)
   parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
   parseRepParam = RepParam <$> identifier' <* symbol "*"
   parseReqParam = ReqParam <$> identifier'
+  parseFlagParam = FlagParam <$> identifierNoSpaces <* symbol "?"
 
 
 
@@ -119,7 +120,7 @@ parseNormalFnApp = do
   pure (EFnApp fn args)
 
 parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg)
-parseArg = do
+parseArg = parseFlagArg <|> do
   first <- try parseNonFnAppExpr
   let
     parseListArg = ListArg <$> (symbol "*" *> pure first)
@@ -129,6 +130,7 @@ parseArg = do
         EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
         _ -> mzero
   parseListArg <|> parseKeywordArg <|> pure (Arg first)
+parseFlagArg = FlagArg <$> (symbol "`" *> identifier)
 
 parseArgs = do
   args <- many parseArg
@@ -189,7 +191,7 @@ binopR startChar = Infix (try $ do
 
 opChars = "/<>?:\\|`~!@#$%^&*+-="
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
-builtinOps = reservedOps ++ ["*", "/", "_", "_*", "."]
+builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "`"]
 keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]
 
 groupChars = "()[]{}"
@@ -199,6 +201,10 @@ identChar = satisfy (\x -> isAlphaNum x || x=='\'')
 
 identifier = (do
   val <- lexeme $ (:) <$> identStart <*> many identChar
+  if val `elem` keywords then mzero else pure val) <?> "identifier"
+
+identifierNoSpaces = (do
+  val <- (:) <$> identStart <*> many identChar
   if val `elem` keywords then mzero else pure val) <?> "identifier"
 
 

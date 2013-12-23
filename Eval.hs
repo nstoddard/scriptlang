@@ -224,6 +224,12 @@ matchParams [RepParam (name,accessType)] args env = do
 matchParams params_ (KeywordArg k arg:args) env = do
   params <- takeKeywordArg params_ k
   matchParams' params arg args True env
+matchParams params_ (FlagArg flag:args) env = do
+  params <- takeFlagParam params_ flag
+  (:) (flag,ByVal,makeBool True) <$> matchParams params args env
+matchParams (FlagParam flag:params) args_ env = do
+  (args,match) <- takeFlagArg args_ flag
+  (:) (flag,ByVal,makeBool match) <$> matchParams params args env
 matchParams params [] env = throwError $ "Not enough arguments for function; unspecified arguments: " ++ intercalate ", " (map prettyPrint params)
 matchParams [] args env = throwError $ "Too many arguments for function; extra arguments: " ++ intercalate ", " (map prettyPrint args)
 matchParams params args env = throwError $ "matchParams unimplemented for " ++ show (params,args)
@@ -238,6 +244,23 @@ takeKeywordArg params name = case length match of
       ReqParam (name',_)   -> name == name'
       OptParam (name',_) _ -> name == name'
 
+takeFlagParam :: [Param] -> String -> IOThrowsError [Param]
+takeFlagParam params flag = case length match of
+  0 -> throwError $ "No match for flag " ++ flag
+  1 -> pure noMatch
+  _ -> throwError $ "Multiple matches for flag " ++ flag ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
+  where
+    (match, noMatch) = flip partition params $ \param -> case param of
+      FlagParam flag' -> flag == flag'
+
+takeFlagArg :: [Arg] -> String -> IOThrowsError ([Arg],Bool)
+takeFlagArg args flag = case length match of
+  0 -> pure (args, False)
+  1 -> pure (noMatch, True)
+  _ -> throwError $ "Multiple matches for flag " ++ flag ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
+  where
+    (match, noMatch) = flip partition args $ \arg -> case arg of
+      FlagArg flag' -> flag == flag'
 
 verifyParams :: [Param] -> IOThrowsError ()
 verifyParams = verifyParams' S.empty where
@@ -246,6 +269,7 @@ verifyParams = verifyParams' S.empty where
   verifyParams' set (ReqParam name:  params) = verifyID set name params
   verifyParams' set (OptParam name _:params) = verifyID set name params
   verifyParams' set (RepParam name:  params) = verifyID set name params
+  verifyParams' set (FlagParam name: params) = verifyID set (name,ByVal) params
   verifyID set (name,_) params = if S.member name set then throwError $ "Two definitions for parameter " ++ name
     else verifyParams' (S.insert name set) params
 
@@ -258,6 +282,8 @@ verifyArgs = verifyArgs' S.empty where
   verifyArgs' set (ListArg _:args) = verifyArgs' set args
   verifyArgs' set (KeywordArg key _:args) = if S.member key set then throwError $ "Two definitions for keyword argument " ++ key
     else verifyArgs' (S.insert key set) args
+  verifyArgs' set (FlagArg flag:args) = if S.member flag set then throwError $ "Two definitions for flag argument " ++ flag
+    else verifyArgs' (S.insert flag set) args
   verifyArgs' set (RestArgs:args) = error "RestArgs in verifyArgs'"
 
 

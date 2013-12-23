@@ -2,6 +2,8 @@
 
 module Scriptlang where
 
+--RESUME: I was just about to start making spaces matter in operators: "1+2 * 3+4" should be different than "1 + 2*3 + 4", and "f -a" should pass "a" as a flag to "f"
+
 {- TODO
   For current version:
     ls, cd, pwd, and a whole bunch of other commands should work properly

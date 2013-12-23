@@ -171,3 +171,6 @@ This way, you should never come across a lone identifier in the parse tree, vast
 Perhaps the extension syntax should be something like:
   0.fac = 1
   n:Int.fac = n * (n-1) fac
+
+
+There should be a way to execute a command, or series of commands, in a particular directory, without calling "cd" and then calling it again manually at the end of the block

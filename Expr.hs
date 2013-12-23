@@ -132,8 +132,8 @@ data AccessType = ByVal | ByName deriving (Eq,Show)
 data Obj = Obj Env | PrimObj PrimData Env
 
 --TODO: should I rename RepParam to ListParam for consistency with ListArg?
-data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier deriving Show
-data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs deriving Show
+data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier | FlagParam String deriving Show
+data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String deriving Show
 
 type IOThrowsError = ErrorT String IO
 
@@ -170,12 +170,14 @@ instance Pretty Param where
   pretty (ReqParam (id,accessType)) = pretty accessType <//> pretty id
   pretty (OptParam (id,accessType) def) = pretty accessType <//> pretty id <//> pretty ":" <//> pretty def
   pretty (RepParam (id,accessType)) = pretty accessType <//> pretty id <//> pretty "*"
+  pretty (FlagParam flag) = pretty flag <//> pretty "?"
 
 instance Pretty Arg where
   pretty (Arg expr) = pretty expr
   pretty (KeywordArg name expr) = pretty name <//> pretty ":" <//> pretty expr
   pretty (ListArg expr) = pretty expr <//> pretty "*"
   pretty (ListArgNoEval exprs) = pretty exprs <//> pretty "*"
+  pretty (FlagArg flag) = pretty "`" <//> pretty flag
 
 instance Pretty Expr where
   pretty EVoid = pretty "void"
@@ -322,9 +324,11 @@ isRestArgs _ = False
 desugarParam (ReqParam id) = ReqParam id
 desugarParam (OptParam id expr) = OptParam id (desugar expr)
 desugarParam (RepParam id) = RepParam id
+desugarParam (FlagParam flag) = FlagParam flag
 
 desugarArg (Arg expr) = Arg (desugar expr)
 desugarArg (KeywordArg id expr) = KeywordArg id (desugar expr)
 desugarArg (ListArg expr) = ListArg (desugar expr)
 desugarArg (ListArgNoEval {}) = error "Can't have ListArgNoEval in desugarArg!"
 desugarArg RestArgs = RestArgs
+desugarArg (FlagArg flag) = FlagArg flag
