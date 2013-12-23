@@ -104,12 +104,13 @@ data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EPrim [Param] (EnvStack -> IOThrowsError (Expr,EnvStack)) | EFn [Param] Expr |
+  EExec String |
   EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EClosure [Param] Expr EnvStack | EValClosure Expr EnvStack |
   EIf Expr Expr Expr |
-  EUnknown --Replaces UnknownArg
+  EUnknown
 
 fromEList :: Expr -> [Expr]
 fromEList (EObj (PrimObj (PList xs) _)) = xs
@@ -203,6 +204,7 @@ instance Pretty Expr where
   pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
   pretty EUnknown = pretty "_"
   pretty (EValClosure expr env) = pretty expr
+  pretty (EExec prog) = pretty prog
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x

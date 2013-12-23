@@ -174,7 +174,7 @@ ops = [
   "&",
   "^",
   "|",
-  "?\\`~@#$"
+  "?\\~@#$"
   ]
 
 opTable = concatMap (map op) ops
@@ -189,7 +189,8 @@ binopR startChar = Infix (try $ do
   pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
   ) AssocRight
 
-opChars = "/<>?:\\|`~!@#$%^&*+-="
+--TODO: I removed ` because it's currently the syntax used to pass flags to foreign programs. When I improve the parser to be whitespace-sensitive, I can re-add it.
+opChars = "/<>?:\\|~!@#$%^&*+-="
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
 builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "`"]
 keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]

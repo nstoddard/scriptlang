@@ -46,7 +46,7 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
     Just (val, accessType2) -> do
       val <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure val
-        (ByVal, ByName) -> fst <$> eval val env
+        (ByVal, ByName) -> eval' val env
         (ByName, ByName) -> pure val
         (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
       if derefVars then (case val of
@@ -61,7 +61,7 @@ maybeEvalID derefVars (EId (id,accessType)) env = do
     Just (val, accessType2) -> do
       val <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure val
-        (ByVal, ByName) -> fst <$> eval val env
+        (ByVal, ByName) -> eval' val env
         (ByName, ByName) -> pure val
         (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
       if derefVars then (case val of
@@ -72,10 +72,12 @@ maybeEvalID derefVars (EId (id,accessType)) env = do
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 eval EVoid env = pure (EVoid, env)
 eval id@(EId {}) env = do
-  id <- maybeEvalID True id env --"Identifier not found: "
-  case id of
+  id' <- maybeEvalID True id env
+  case id' of
     Just id -> pure (id, env)
-    Nothing -> throwError "TODO: implement running other programs"
+    Nothing -> case id of
+      EId (id, ByVal) -> pure (EExec id, env)
+      EId (id, ByName) -> throwError "Can't call a foreign program by-name!"
 eval (EGetVar var) env = evalID False (EId var) "Variable not found: " env
 eval (EMemberAccess obj id) env = do
   obj <- eval obj env
@@ -98,7 +100,7 @@ eval (EMemberAccessGetVar obj id) env = do
       pure (val, env)
     (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
 eval (EDef id val) env = envDefine id env $ do
-  val <- (,ByVal) . fst <$> eval val env
+  val <- (,ByVal) <$> eval' val env
   pure (val, fst val)
 eval (EObj obj) env = pure (EObj obj, env)
 eval (EBlock []) env = pure (EVoid, env)
@@ -112,6 +114,13 @@ eval (EFn params body) env = do
 eval (EFnApp fn args) env = do
   (fn',_) <- eval fn env
   case fn' of
+    EExec prog -> do
+      verifyArgs args
+      args' <- getExecArgs args env
+      res <- lift $ tryJust (guard . isDoesNotExistError) (rawSystem prog args')
+      case res of
+        Left err -> throwError $ "Program or identifier not found: " ++ prog
+        Right res -> pure (EVoid, env)
     EClosure params body closure -> do
       verifyArgs args
       args' <- matchParams params args env
@@ -169,7 +178,7 @@ eval (EAssign var val) env = do
     EVar var -> lift $ var $= val'
     x -> throwError $ "Not a variable: " ++ prettyPrint x
   pure (val', env)
-eval (EValClosure expr closure) env = (,env) . fst <$> eval expr closure
+eval (EValClosure expr closure) env = (,env) <$> eval' expr closure
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
@@ -183,16 +192,43 @@ replEval (EVarDef id val) env = do
   envRedefine id (val'',ByVal) env
 replEval expr env = eval expr env
 
-call obj f args = eval (EFnApp (EMemberAccess (EObj obj) f) args)
+call obj f args = eval' (EFnApp (EMemberAccess (EObj obj) f) args)
 evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 
+eval' expr env = fst <$> eval expr env
+
+getStr expr env = do
+  case expr of
+    EObj (PrimObj (PList xs) _) -> concatMapM (`getStr` env) xs
+    EObj obj -> do
+      res <- call obj "toString" [] env
+      case res of
+        EObj (PrimObj (PString str) _) -> pure [str]
+        x -> throwError $ "Invalid result from toString: " ++ prettyPrint x
+    x -> throwError $ "Invalid argument to program: " ++ prettyPrint x
+
+evalToStr expr env = (`getStr` env) =<< eval' expr env
+
+--data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String deriving Show
+getExecArgs :: [Arg] -> EnvStack -> IOThrowsError [String]
+getExecArgs [] env = pure []
+getExecArgs (Arg arg:args) env = (++) <$> evalToStr arg env <*> getExecArgs args env
+getExecArgs (KeywordArg str arg:args) env = (("--"++str) :) <$> ((++) <$> evalToStr arg env <*> getExecArgs args env)
+getExecArgs (ListArg xs:args) env = do
+  listArgs <- getList =<< eval' xs env
+  getExecArgs (ListArgNoEval listArgs:args) env
+getExecArgs (ListArgNoEval xs:args) env = (++) <$> concatMapM (`getStr` env) xs <*> getExecArgs args env
+getExecArgs (FlagArg flag:args) env
+  | null flag = error "Empty flag in getExecArgs"
+  | length flag == 1 = (("-"++flag):) <$> getExecArgs args env
+  | length flag > 1 = (("--"++flag):) <$> getExecArgs args env
 
 matchArg :: Bool -> String -> AccessType -> Expr -> EnvStack -> IOThrowsError (String,AccessType,Expr)
 matchArg evaluate name accessType arg env = do
   (arg',_) <- case accessType of
     ByVal -> if evaluate then eval arg env else pure (EValClosure arg env,env)
     ByName -> case arg of
-      (EId (_,ByName)) -> if evaluate then eval arg env else pure (EValClosure arg env,env) --We must evaluate in this case or we end up trying to treat an identifier as a value when calling a function with something prefixed with ~, as occurs in "while"
+      (EId (_,ByName)) -> if evaluate then eval arg env else pure (EValClosure arg env,env) --We must evaluate in this case or we end up trying to treat an identifier as a value when calling a function with something prefixed with ~, which occurs in functions like "while"
       _ -> pure (EValClosure arg env, env)
   pure (name,accessType,arg')
 
@@ -211,13 +247,13 @@ matchParams params@(ReqParam {}:_) (ListArgNoEval (arg:lArgs):args) env = do
 matchParams params@(OptParam {}:_) (ListArgNoEval (arg:lArgs):args) env = do
   matchParams' params arg (ListArgNoEval lArgs:args) False env
 matchParams params (ListArg xs:args) env = do
-  listArgs <- getList =<< fst <$> eval xs env
+  listArgs <- getList =<< eval' xs env
   matchParams params (ListArgNoEval listArgs:args) env
 matchParams (OptParam (name,accessType) def:params) [] env = (:) <$> matchArg True name accessType def env <*> matchParams params [] env
 matchParams [RepParam (name,accessType)] args env = do
   args <- concat <$> (forM args $ \arg -> case arg of
-    Arg arg -> (:[]) . fst <$> eval arg env
-    ListArg xs -> getList =<< fst <$> eval xs env
+    Arg arg -> (:[]) <$> eval' arg env
+    ListArg xs -> getList =<< eval' xs env
     ListArgNoEval args -> pure args
     KeywordArg k arg -> throwError $ "Can't pass keyword argument to repeated parameter: " ++ prettyPrint k ++ ":" ++ prettyPrint arg)
   pure [(name, accessType, makeList args)]
@@ -287,7 +323,7 @@ verifyArgs = verifyArgs' S.empty where
   verifyArgs' set (RestArgs:args) = error "RestArgs in verifyArgs'"
 
 
-envLookup' name env = fst <$> eval (EId (name,ByVal)) env
+envLookup' name env = eval' (EId (name,ByVal)) env
 
 
 makeInt a = EObj $ PrimObj (PInt a) $ envFromList [

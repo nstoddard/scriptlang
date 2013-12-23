@@ -114,13 +114,13 @@ startEnv = envStackFromList [
   ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure EVoid), --TODO: THIS DOESN'T WORK
   ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid),
   ("print", objUnop' $ \obj env -> do
-    (expr,_) <- call obj "toString" [] env
+    expr <- call obj "toString" [] env
     case expr of
       EObj (PrimObj (PString str) _) -> lift $ putStr str
       x -> throwError $ "toString must return a string; not " ++ prettyPrint x
     pure EVoid),
   ("println", objUnop' $ \obj env -> do
-    (expr,_) <- call obj "toString" [] env
+    expr <- call obj "toString" [] env
     case expr of
       EObj (PrimObj (PString str) _) -> lift $ putStrLn str
       x -> throwError $ "toString must return a string; not " ++ prettyPrint x

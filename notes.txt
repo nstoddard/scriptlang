@@ -174,3 +174,6 @@ Perhaps the extension syntax should be something like:
 
 
 There should be a way to execute a command, or series of commands, in a particular directory, without calling "cd" and then calling it again manually at the end of the block
+
+TODO:
+  how do pipes work for external programs? Is there an easy way to redirect the input/output to a file? Is there an easy way to redirect the output of one program to the input of another?

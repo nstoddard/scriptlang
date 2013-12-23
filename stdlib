@@ -5,7 +5,6 @@ sumUpTo n -> (n * (n+1)) div 2
 fac n -> if (n==0) 1 else n * fac (n-1)
 
 
-ls -> exec 'ls'
 clear -> execRaw 'clear' //This must use execRaw rather than "exec because clear is a builtin shell command, not a program
 
 
