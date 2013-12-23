@@ -93,7 +93,8 @@ parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
 parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
-parseUnknown = symbol "_" *> pure EUnknown
+--This can't use "symbol" because of cases like "_+5"s
+parseUnknown = lexeme (string "_") *> pure EUnknown
 
 parseExec = do
   symbol "/"
@@ -160,8 +161,8 @@ parseFn = do
   pure (EFn params body)
 
 parseBool = parseTrue <|> parseFalse
-parseTrue = keyword "True" *> pure (makeBool True)
-parseFalse = keyword "False" *> pure (makeBool False)
+parseTrue = keyword "true" *> pure (makeBool True)
+parseFalse = keyword "false" *> pure (makeBool False)
 parseVoid = keyword "void" *> pure EVoid
 
 
@@ -193,20 +194,22 @@ binopR startChar = Infix (try $ do
 opChars = "/<>?:\\|~!@#$%^&*+-="
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
 builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "`"]
-keywords = ["True", "False", "new", "with", "void", "if", "else", "var"]
+keywords = ["true", "false", "new", "with", "void", "if", "else", "var"]
 
 groupChars = "()[]{}"
 
 identStart = satisfy isAlpha
 identChar = satisfy (\x -> isAlphaNum x || x=='\'')
 
-identifier = (do
+identifier = lexeme backquoteIdentifier <|> (do
   val <- lexeme $ (:) <$> identStart <*> many identChar
   if val `elem` keywords then mzero else pure val) <?> "identifier"
 
-identifierNoSpaces = (do
+identifierNoSpaces = backquoteIdentifier <|> (do
   val <- (:) <$> identStart <*> many identChar
   if val `elem` keywords then mzero else pure val) <?> "identifier"
+
+backquoteIdentifier = char '`' *> many (noneOf "`") <* char '`'
 
 
 
@@ -227,7 +230,7 @@ operator startChar rassoc = (do
 parseInt = makeInt <$> integer
 parseFloat = makeFloat <$> float
 parseChar = makeChar <$> lexeme (char '#' *> character)
-parseString bound = makeString  <$> (char bound *> many (character' [bound]) <* char bound <* whiteSpace)
+parseString bound = makeString <$> (char bound *> many (character' [bound]) <* char bound <* whiteSpace)
 character' omit = escapeChar <|> noneOf omit
 character = escapeChar <|> anyChar
 escapeChar = char '\\' *> asum (for escapeChars $ \(c,v) -> char c *> pure v)

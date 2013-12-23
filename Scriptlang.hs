@@ -7,10 +7,10 @@ module Scriptlang where
 {- TODO
   For current version:
     Map, filter, etc should be methods on lists, not functions
-    More I/O
-    Glob syntax and regexes
-    Command history
-    Interfacing between scripts - this should be fairly easy
+
+  Not working:
+    (_) 5
+      (_) should be the identity functoin
 
   Running other programs:
     ls `a
@@ -26,6 +26,10 @@ module Scriptlang where
   1+2 * 3+4 != 1 + 2*3 + 4
 
   In later versions:
+    More I/O
+    Glob syntax and regexes
+    Command history
+    I/O redirection and pipes for external programs
     Types and pattern matching
     Generators
     Syntax for specifying chars with a hex code
@@ -92,17 +96,7 @@ startEnv = envStackFromList [
   ("-", primUnop $ onNum negate negate),
   ("!", primUnop $ onBool not),
   ("exit", nilop (lift exitSuccess)),
-  ("exec", EPrim [reqParam "proc", repParam "args"] $ \env -> do
-    proc <- envLookup' "proc" env
-    args <- envLookup' "args" env
-    case (proc, args) of
-      (EObj (PrimObj (PString proc) _), EObj (PrimObj (PList args) _)) -> do
-        args <- forM args $ \arg -> case arg of
-          EObj (PrimObj (PString arg) _) -> pure arg
-          _ -> throwError "Invalid argument to exec"
-        lift $ rawSystem proc args
-        pure (EVoid, env)
-      _ -> throwError "Invalid argument to exec"),
+  ("help", makeString "TODO: write documentation"),
   ("execRaw", EPrim [reqParam "proc"] $ \env -> do
     proc <- envLookup' "proc" env
     case proc of
@@ -138,15 +132,20 @@ parseEval str env = do
   expr <- parseInput "" str parseExpr desugar
   eval expr env
 
+debugging env = do
+  debug <- lookupID "debug" env
+  case debug of
+    EObj (PrimObj (PBool True) _) -> pure True
+    EObj (PrimObj (PBool False) _) -> pure False
+    x -> throwError $ "Invalid value for debug: " ++ prettyPrint x
 
 main = do
+  putStrLn "Scriptlang version 0.1"
   env <- startEnv
   env <- runErrorT $ envNewScope =<< runFile "stdlib" env
   case env of
     Left err -> putStrLn err
     Right env -> repl env
-
-
 
 repl env = do
   input <- replGetInput Nothing
@@ -154,8 +153,12 @@ repl env = do
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
-      --print expr
-      --putStrLn (prettyPrint expr)
+      debug <- runErrorT (debugging env)
+      case debug of
+        Left err -> putStrLn err >> repl env
+        Right debug -> when debug $ do
+          print expr
+          putStrLn (prettyPrint expr)
 
       res <- runErrorT (replEval expr env)
       case res of
@@ -193,9 +196,9 @@ replGetInput cont = do
   flush
   input_ <- catchJust (guard . isEOFError) (fmap Just getLine) (const $ pure Nothing)
   input <- case input_ of
-    Nothing -> exitSuccess --TODO: replace this with "replGetInput cont"
+    Nothing -> exitSuccess
     Just input -> pure input
-  if null input then exitSuccess else do
+  if null input then replGetInput cont else do
   let
     input' = case cont of
       Just cont -> cont ++ "\n" ++ input

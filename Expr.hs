@@ -209,7 +209,8 @@ instance Pretty Expr where
 instance Pretty PrimData where
   pretty (PInt x) = pretty x
   pretty (PFloat x) = pretty x
-  pretty (PBool x) = pretty x
+  pretty (PBool True) = pretty "true"
+  pretty (PBool False) = pretty "false"
   pretty (PChar x) = pretty '#' <//> pretty x
   pretty (PString x) = pretty '"' <//> pretty x <//> pretty '"'
   pretty (PList xs) = prettyList xs
@@ -257,7 +258,7 @@ isOperator = not . isAlphaNum . head
 desugar :: Expr -> Expr
 desugar EVoid = EVoid
 desugar (EId id) = EId id
-desugar (EFnApp EUnknown []) = EUnknown
+--desugar (EFnApp EUnknown []) = EUnknown
 desugar (EFnApp fn args) = processUnknownArgs (desugar fn) (map desugarArg args)
 desugar (EMemberAccess a b) = EMemberAccess (desugar a) b
 desugar prim@(EPrim {}) = prim
@@ -293,7 +294,7 @@ processUnknownArgs (EMemberAccess obj field) args = case (isUnknown obj, not (nu
     name i = "_" ++ [chr (i + ord 'a')]
     objUnknowns = if isUnknown obj then 1 else 0
     unknowns = map name [0..objUnknowns+countBy isUnknownArg args-1]
-    hasRestArgs = isRestArgs (last args)
+    hasRestArgs = if null args then False else isRestArgs (last args)
     replaceUnknowns [] i = []
     replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
     replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]
@@ -308,7 +309,7 @@ processUnknownArgs fn args = case (isUnknown fn, not (null unknowns), hasRestArg
     name i = "_" ++ [chr (i + ord 'a')]
     fnUnknowns = if isUnknown fn then 1 else 0
     unknowns = map name [0..fnUnknowns+countBy isUnknownArg args-1]
-    hasRestArgs = isRestArgs (last args)
+    hasRestArgs = if null args then False else isRestArgs (last args)
     replaceUnknowns [] i = []
     replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
     replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]

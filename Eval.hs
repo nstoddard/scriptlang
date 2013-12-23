@@ -54,6 +54,10 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
         val -> pure (val,env))
       else pure (val,env)
 
+evalID' derefVars id notFoundMsg env = fst <$> evalID derefVars id notFoundMsg env
+
+lookupID id = evalID' True (EId (id,ByVal)) "Identifier not found: "
+
 maybeEvalID derefVars (EId (id,accessType)) env = do
   val <- envLookup id env
   case val of
@@ -83,10 +87,10 @@ eval (EMemberAccess obj id) env = do
   obj <- eval' obj env
   case obj of
     EObj (Obj oenv) -> do
-      (val,_) <- evalID True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EObj (PrimObj prim oenv) -> do
-      (val,_) <- evalID True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
@@ -94,10 +98,10 @@ eval (EMemberAccessGetVar obj id) env = do
   obj <- eval' obj env
   case obj of
     EObj (Obj oenv) -> do
-      (val,_) <- evalID False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EObj (PrimObj prim oenv) -> do
-      (val,_) <- evalID False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
@@ -121,7 +125,7 @@ eval (EFnApp fn args) env = do
       args' <- getExecArgs args env
       res <- lift $ tryJust (guard . isDoesNotExistError) (rawSystem prog (firstArgs ++ args'))
       case res of
-        Left err -> throwError $ "Program or identifier not found: " ++ prog
+        Left err -> throwError $ "Identifier or program not found: " ++ prog
         Right res -> pure (EVoid, env)
     EClosure params body closure -> do
       verifyArgs args
@@ -194,6 +198,7 @@ replEval (EVarDef id val) env = do
   envRedefine id (val'',ByVal) env
 replEval expr env = eval expr env
 
+apply f args = eval' (EFnApp f args)
 call obj f args = eval' (EFnApp (EMemberAccess (EObj obj) f) args)
 evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 
@@ -416,7 +421,9 @@ makeChar a = EObj $ PrimObj (PChar a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a))
   ]
 makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
-  ("toString", nilop $ pure (makeString $ prettyPrint a)),
+  ("toString", nilop $ case a of
+    True -> pure (makeString "true")
+    False -> pure (makeString "false")),
   ("&&", primUnop $ onBool (a&&)),
   ("||", primUnop $ onBool (a||))
   ]
@@ -435,7 +442,8 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("::", unop $ \b -> pure $ makeList (b:a)),
-  ("apply", primUnop $ onInt' (index a))
+  ("apply", primUnop $ onInt' (index a)),
+  ("map", unop' $ \fn env -> makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a)
   ]
 makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
@@ -483,20 +491,24 @@ binop :: (Expr -> Expr -> IOThrowsError Expr) -> Expr
 binop f = prim ["x", "y"] $ \args -> f (args!"x") (args!"y")
 
 primUnop :: (PrimData -> IOThrowsError Expr) -> Expr
-primUnop f = prim ["x"] $ \args -> let EObj (PrimObj prim _) = args!"x" in f prim
+primUnop f = prim ["x"] $ \args -> case args!"x" of
+  EObj (PrimObj prim _) -> f prim
+  x -> throwError $ "Invalid argument to primUnop: " ++ prettyPrint x
 
 objUnop :: (Obj -> IOThrowsError Expr) -> Expr
-objUnop f = prim ["x"] $ \args -> let EObj obj = args!"x" in f obj
+objUnop f = prim ["x"] $ \args -> case args!"x" of
+  EObj obj -> f obj
+  x -> throwError $ "Invalid argument to objUnop: " ++ prettyPrint x
 
 objUnop' :: (Obj -> EnvStack -> IOThrowsError Expr) -> Expr
 objUnop' f = prim' ["x"] $ \args env -> case args!"x" of
   EObj obj -> f obj env
-  _ -> throwError "Invalid argument to objUnop'"
+  x -> throwError $ "Invalid argument to objUnop': " ++ prettyPrint x
 
 stringUnop :: (String -> IOThrowsError Expr) -> Expr
 stringUnop f = objUnop $ \obj -> case obj of
   PrimObj (PString str) _ -> f str
-  _ -> throwError "Invalid argument to stringUnop"
+  x -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint x
 
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onNum onInt onFloat (PInt b) = pure . makeInt $ onInt b

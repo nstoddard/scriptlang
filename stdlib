@@ -1,3 +1,5 @@
+var debug <- false
+
 pi = 3.141592653589793238462643383279
 tau = 2*pi
 
@@ -12,11 +14,6 @@ doTwice ~x -> {
   x
   x
 }
-
-map f xs -> if xs.empty [] else f xs.head :: map f xs.tail
-filter f xs -> if xs.empty []
-  else if (f xs.head) xs.head :: filter f xs.tail
-  else filter f xs.tail
 
 id x -> x
 
