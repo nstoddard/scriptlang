@@ -254,6 +254,10 @@ instance Show Expr where
 isOperator = not . isAlphaNum . head
 
 
+getBool (EObj (PrimObj (PBool True) _)) = pure True
+getBool (EObj (PrimObj (PBool False) _)) = pure False
+getBool x = throwError $ "Not a bool: " ++ prettyPrint x
+
 
 desugar :: Expr -> Expr
 desugar EVoid = EVoid

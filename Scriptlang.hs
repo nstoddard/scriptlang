@@ -1,13 +1,10 @@
 {-# LANGUAGE TupleSections #-}
 
-module Scriptlang where
+module Main where
 
 --RESUME: I was just about to start making spaces matter in operators: "1+2 * 3+4" should be different than "1 + 2*3 + 4", and "f -a" should pass "a" as a flag to "f"
 
 {- TODO
-  For current version:
-    Map, filter, etc should be methods on lists, not functions
-
   Running other programs:
     ls `a
     ls 'a
@@ -18,10 +15,11 @@ module Scriptlang where
     a+b - same thing
     a +b - calling the function a with "+b" as an argument
     a+ b - invalid
-  Note that with this syntax, "f -5" doesn't call f with -5 as the argument, it calls f with a flag of "5" as the argument. You'd have to write "f (-5)".
+  Note that with this syntax, "f -5" doesn't call f with -5 as the argument, it calls f with a flag of "5" as the argument. You'd have to write "f (-5)" for the other interpretation.
   1+2 * 3+4 != 1 + 2*3 + 4
 
   In later versions:
+    Add a way to run another script - calling runFile from within a script
     More I/O
     Glob syntax and regexes
     Command history
@@ -135,10 +133,30 @@ debugging env = do
     EObj (PrimObj (PBool False) _) -> pure False
     x -> throwError $ "Invalid value for debug: " ++ prettyPrint x
 
+stdlib = "\
+  \var debug <- false\n\
+  \\n\
+  \pi = 3.141592653589793238462643383279\n\
+  \tau = 2*pi\n\
+  \\n\
+  \sumUpTo n -> (n * (n+1)) div 2\n\
+  \fac n -> if (n==0) 1 else n * fac (n-1)\n\
+  \\n\
+  \clear -> execRaw 'clear'\n\
+  \\n\
+  \id x -> x\n\
+  \\n\
+  \list xs* -> xs\n\
+  \\n\
+  \while ~cond ~f -> if cond {f; while ~cond ~f}\n\
+  \\n\
+  \println 'Scriptlang version 0.1'\n\
+  \pwd\n\
+  \"
+
 main = do
-  putStrLn "Scriptlang version 0.1"
   env <- startEnv
-  env <- runErrorT $ envNewScope =<< runFile "stdlib" env
+  env <- runErrorT $ envNewScope =<< runString stdlib env -- =<< runFile "stdlib" env
   case env of
     Left err -> putStrLn err
     Right env -> repl env
@@ -178,6 +196,15 @@ runFile filename env = do
   input <- lift $ Strict.readFile filename
   exprs <- parseInput filename input parseCompound (map desugar)
   --lift $ putStrLn $ "Running file: " ++ filename
+  forM_ exprs $ \expr -> do
+    --lift $ print expr
+    --lift $ putStrLn (prettyPrint expr)
+    eval expr env
+  pure env
+
+runString :: String -> EnvStack -> IOThrowsError EnvStack
+runString input env = do
+  exprs <- parseInput "" input parseCompound (map desugar)
   forM_ exprs $ \expr -> do
     --lift $ print expr
     --lift $ putStrLn (prettyPrint expr)

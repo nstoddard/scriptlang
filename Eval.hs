@@ -187,6 +187,7 @@ eval (EAssign var val) env = do
 eval (EValClosure expr closure) env = (,env) <$> eval' expr closure
 eval x _ = throwError $ "eval unimplemented for " ++ show x
 
+
 --Like regular eval, but allows you to redefine things
 replEval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 replEval (EDef id val) env = do
@@ -443,7 +444,8 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("::", unop $ \b -> pure $ makeList (b:a)),
   ("apply", primUnop $ onInt' (index a)),
-  ("map", unop' $ \fn env -> makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a)
+  ("map", unop' $ \fn env -> makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
+  ("filter", unop' $ \fn env -> makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)
   ]
 makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
