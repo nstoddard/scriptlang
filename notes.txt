@@ -177,3 +177,5 @@ There should be a way to execute a command, or series of commands, in a particul
 
 TODO:
   how do pipes work for external programs? Is there an easy way to redirect the input/output to a file? Is there an easy way to redirect the output of one program to the input of another?
+
+Unfortunately, it's not possible to make (_) be the identity function. It's no big deal though; nobody would ever write that in practice. Probably.

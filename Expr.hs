@@ -258,7 +258,7 @@ isOperator = not . isAlphaNum . head
 desugar :: Expr -> Expr
 desugar EVoid = EVoid
 desugar (EId id) = EId id
---desugar (EFnApp EUnknown []) = EUnknown
+desugar (EFnApp EUnknown []) = EUnknown
 desugar (EFnApp fn args) = processUnknownArgs (desugar fn) (map desugarArg args)
 desugar (EMemberAccess a b) = EMemberAccess (desugar a) b
 desugar prim@(EPrim {}) = prim

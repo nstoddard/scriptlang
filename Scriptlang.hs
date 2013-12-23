@@ -8,10 +8,6 @@ module Scriptlang where
   For current version:
     Map, filter, etc should be methods on lists, not functions
 
-  Not working:
-    (_) 5
-      (_) should be the identity functoin
-
   Running other programs:
     ls `a
     ls 'a
