@@ -104,7 +104,7 @@ data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EPrim [Param] (EnvStack -> IOThrowsError (Expr,EnvStack)) | EFn [Param] Expr |
-  EExec String |
+  EExec String [String] |
   EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
@@ -204,7 +204,7 @@ instance Pretty Expr where
   pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
   pretty EUnknown = pretty "_"
   pretty (EValClosure expr env) = pretty expr
-  pretty (EExec prog) = pretty prog
+  pretty (EExec prog args) = pretty prog </> hsep (map pretty args)
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x

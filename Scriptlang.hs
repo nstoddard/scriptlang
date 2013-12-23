@@ -6,7 +6,6 @@ module Scriptlang where
 
 {- TODO
   For current version:
-    ls, cd, pwd, and a whole bunch of other commands should work properly
     Map, filter, etc should be methods on lists, not functions
     More I/O
     Glob syntax and regexes
@@ -163,7 +162,9 @@ repl env = do
         Left err -> putStrLn err >> repl env
         Right (EVoid, env') -> repl env'
         Right (expr', env') -> do
-          putStrLn (prettyPrint expr')
+          case expr' of
+            EObj (PrimObj (PString str) _) -> putStrLn str
+            _ -> putStrLn (prettyPrint expr')
           repl env'
 
 parseInput :: String -> String -> Parsec String () a -> (a->a) -> IOThrowsError a

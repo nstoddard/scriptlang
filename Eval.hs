@@ -76,29 +76,31 @@ eval id@(EId {}) env = do
   case id' of
     Just id -> pure (id, env)
     Nothing -> case id of
-      EId (id, ByVal) -> pure (EExec id, env)
+      EId (id, ByVal) -> pure (EExec id [], env)
       EId (id, ByName) -> throwError "Can't call a foreign program by-name!"
 eval (EGetVar var) env = evalID False (EId var) "Variable not found: " env
 eval (EMemberAccess obj id) env = do
-  obj <- eval obj env
+  obj <- eval' obj env
   case obj of
-    (EObj (Obj oenv),_) -> do
+    EObj (Obj oenv) -> do
       (val,_) <- evalID True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
-    (EObj (PrimObj prim oenv),_) -> do
+    EObj (PrimObj prim oenv) -> do
       (val,_) <- evalID True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
-    (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
+    EExec prog args -> pure (EExec prog (args++[id]), env)
+    x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
 eval (EMemberAccessGetVar obj id) env = do
-  obj <- eval obj env
+  obj <- eval' obj env
   case obj of
-    (EObj (Obj oenv),_) -> do
+    EObj (Obj oenv) -> do
       (val,_) <- evalID False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
-    (EObj (PrimObj prim oenv),_) -> do
+    EObj (PrimObj prim oenv) -> do
       (val,_) <- evalID False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
-    (x,_) -> throwError $ "Can't access member " ++ id ++ " on non-objects."
+    EExec prog args -> pure (EExec prog (args++[id]), env)
+    x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
 eval (EDef id val) env = envDefine id env $ do
   val <- (,ByVal) <$> eval' val env
   pure (val, fst val)
@@ -114,10 +116,10 @@ eval (EFn params body) env = do
 eval (EFnApp fn args) env = do
   (fn',_) <- eval fn env
   case fn' of
-    EExec prog -> do
+    EExec prog firstArgs -> do
       verifyArgs args
       args' <- getExecArgs args env
-      res <- lift $ tryJust (guard . isDoesNotExistError) (rawSystem prog args')
+      res <- lift $ tryJust (guard . isDoesNotExistError) (rawSystem prog (firstArgs ++ args'))
       case res of
         Left err -> throwError $ "Program or identifier not found: " ++ prog
         Right res -> pure (EVoid, env)
@@ -419,7 +421,7 @@ makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
   ("||", primUnop $ onBool (a||))
   ]
 makeString a = EObj $ PrimObj (PString a) $ envFromList [
-  ("toString", nilop $ pure (makeString $ prettyPrint a)),
+  ("toString", nilop $ pure (makeString a)),
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("apply", primUnop $ onInt' (\i -> makeChar <$> index a i))
