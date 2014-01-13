@@ -19,6 +19,12 @@ module Main where
   1+2 * 3+4 != 1 + 2*3 + 4
 
   In later versions:
+    "1/2 * 2" should obviously evaluate to 1, not 0.25
+    "Invalid argument to ___" should be changed to something more meaningful
+    Add a way to look up the definition of a function; for instance, it should be possible to look up the definition of the "fac" function
+    Allow user-defined operator precedence and associativity. Scala's rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on.
+    Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
+    Always print the path with forward slashes rather than backslashes (since backslashes are for escape characters, you'd need to write "\\" when you could just write "/")
     Add a way to run another script - calling runFile from within a script
     More I/O
     Glob syntax and regexes
@@ -33,7 +39,6 @@ module Main where
     Unit testing
     Reflection - checking which fields, methods, etc an object supportss
     Imports
-    Flags - use ` as a prefix; ` is translated to - in the generated call to a command. key:val is translated to "--key val"
     Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
     Should it be possible to overload assignment?
     Add fields - like Scala's getters and setters
@@ -221,7 +226,7 @@ replGetInput cont = do
   input <- case input_ of
     Nothing -> exitSuccess
     Just input -> pure input
-  if null input then replGetInput cont else do
+  if null input then exitSuccess {-replGetInput cont-} else do
   let
     input' = case cont of
       Just cont -> cont ++ "\n" ++ input

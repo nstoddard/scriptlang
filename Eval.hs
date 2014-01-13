@@ -105,9 +105,6 @@ eval (EMemberAccessGetVar obj id) env = do
       pure (val, env)
     EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
-eval (EDef id val) env = envDefine id env $ do
-  val <- (,ByVal) <$> eval' val env
-  pure (val, fst val)
 eval (EObj obj) env = pure (EObj obj, env)
 eval (EBlock []) env = pure (EVoid, env)
 eval (EBlock exprs) env = do
@@ -173,6 +170,9 @@ eval (EIf cond t f) env = do
     EObj (PrimObj (PBool True) _) -> ((,env) . fst) <$> eval t env
     EObj (PrimObj (PBool False) _) -> ((,env) . fst) <$> eval f env
     c -> throwError $ "Invalid condition for if: " ++ prettyPrint c
+eval (EDef id val) env = envDefine id env $ do
+  val <- (,ByVal) <$> eval' val env
+  pure (val, fst val)
 eval (EVarDef id val) env = envDefine id env $ do
   (val,_) <- eval val env
   val' <- lift $ (,ByVal) . EVar <$> newIORef val
@@ -190,13 +190,16 @@ eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 --Like regular eval, but allows you to redefine things
 replEval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
-replEval (EDef id val) env = do
-  (val',_) <- eval val env
-  envRedefine id (val',ByVal) env
-replEval (EVarDef id val) env = do
-  (val',_) <- eval val env
-  val'' <- lift $ EVar <$> newIORef val'
-  envRedefine id (val'',ByVal) env
+replEval (EDef id val) env = envRedefine id env $ do
+  val <- (,ByVal) <$> replEval' val env
+  pure (val, fst val)
+{-replEval (EDef id val) env = do
+  (val',_) <- replEval val env
+  envRedefine id (val',ByVal) env-}
+replEval (EVarDef id val) env = envRedefine id env $ do
+  (val,_) <- replEval val env
+  val' <- lift $ (,ByVal) . EVar <$> newIORef val
+  pure (val', val)
 replEval expr env = eval expr env
 
 apply f args = eval' (EFnApp f args)
@@ -204,6 +207,7 @@ call obj f args = eval' (EFnApp (EMemberAccess (EObj obj) f) args)
 evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 
 eval' expr env = fst <$> eval expr env
+replEval' expr env = fst <$> replEval expr env
 
 getStr expr env = do
   case expr of

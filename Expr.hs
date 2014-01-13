@@ -84,11 +84,13 @@ envDefine id env@(EnvStack (x:xs)) f = do
       pure (ret, env)
     Just _ -> throwError $ "Can't reassign identifier: " ++ id
 
-envRedefine :: String -> Value -> EnvStack -> IOThrowsError (Expr,EnvStack)
-envRedefine id val env@(EnvStack (x:xs)) = do
+--The third parameter isn't just a Value because it should only be executed if there isn't an error.
+envRedefine :: String -> EnvStack -> IOThrowsError (Value,Expr) -> IOThrowsError (Expr,EnvStack)
+envRedefine id env@(EnvStack (x:xs)) f = do
   x' <- lift $ get x
+  (val,ret) <- f
   lift $ x $= M.insert id val x'
-  pure (fst val, env)
+  pure (ret, env)
 
 envRemoveIORefs :: EnvStack -> IO [Map String Value]
 envRemoveIORefs (EnvStack xs) = mapM get xs

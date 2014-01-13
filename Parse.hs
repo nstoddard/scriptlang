@@ -167,13 +167,13 @@ parseVoid = keyword "void" *> pure EVoid
 
 
 ops = [
+  "^",
   "*/%",
   "+-",
   ":",
   "=!",
   "<>",
   "&",
-  "^",
   "|",
   "?\\~@#$"
   ]
@@ -239,7 +239,7 @@ escapeChars = [
   ('t', '\t'),
   ('\'', '\''),
   ('"', '"'),
-  ('\'', '\'')
+  ('\\', '\\')
   ]
 
 parseWholeInput = between whiteSpace eof
