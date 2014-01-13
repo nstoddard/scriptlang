@@ -19,7 +19,6 @@ module Main where
   1+2 * 3+4 != 1 + 2*3 + 4
 
   In later versions:
-    "1/2 * 2" should obviously evaluate to 1, not 0.25
     "Invalid argument to ___" should be changed to something more meaningful
     Add a way to look up the definition of a function; for instance, it should be possible to look up the definition of the "fac" function
     Allow user-defined operator precedence and associativity. Scala's rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on.

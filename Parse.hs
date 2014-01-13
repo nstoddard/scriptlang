@@ -178,7 +178,7 @@ ops = [
   "?\\~@#$"
   ]
 
-opTable = concatMap (map op) ops
+opTable = map (concatMap op) ops
 
 op startChar = [binopL startChar, binopR startChar]
 binopL startChar = Infix (try $ do
