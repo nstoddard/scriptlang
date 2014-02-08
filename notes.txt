@@ -179,3 +179,17 @@ TODO:
   how do pipes work for external programs? Is there an easy way to redirect the input/output to a file? Is there an easy way to redirect the output of one program to the input of another?
 
 Unfortunately, it's not possible to make (_) be the identity function. It's no big deal though; nobody would ever write that in practice. Probably.
+
+Flags mean different things in different contexts:
+  When calling an external program:
+    "-a" -> "-a"
+    "-ab" -> "-ab"
+    "--ab" -> "--ab"
+    "-1" -> "-1"
+  When calling a function:
+    "-a" -> "-a"
+    "-ab" -> "-ab"
+    "--ab" -> ERROR
+    "-1" -> "-1"
+
+TODO: make "1+2 * 3" work as expected

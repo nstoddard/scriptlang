@@ -1,0 +1,198 @@
+Develop a language based on composition - where you do problems by using a large vocabulary of built-in and user-defined functions
+English and other natural languages have many thousands of words - there's no reason why programming languages have to be limited to a few built-in functions
+Don't necessarily make the language English-like, but certainly make it natural-language-like. This should make it so that most programmers won't need to understand how low-level things are implemented, they'll only need to understand what they do, their performance characteristics, and how to use them. Peformance-wise, it would be very nice if the compiler or interpreter could automatically figure out the performance cost of any given operation. I'd also like a way to make debugging easy on this system. Ideally, most modules should be small enough that you can tell that they obviously don't have any bugs just by looking over the code, but there's probably no way to accomplish this. Many modules should be very small, but some must necessarily be somewhat complicated. It would be nice if this supported non-strict evaluation by default, and programmers shouldn't really care about the order things are done in. I might need monads in order to make this work with I/O. One thing I'd like to do is to eliminate most uses of variables, conditionals, loops, and recursion - most code doesn't actually need them.
+It's interesting how, when writing English, we almost NEVER write sentences that don't make sense. We can look over an English sentence and, as long as we know all the words in it, we can tell whether it grammatically correct. When writing English, I almost never make grammatical errors, for instance. The only errors I tend to make are the occasional typo, and the only grammatical errors I make happen when I go back and edit something. Furthermore, almost NOBODY makes semantic errors - writing sentences that don't make any sense at all, such as "The apple ate the boy." Anyone can immediately recognize that that sentence is backwards. Is it possible to create a programming language where people have an equally strong intuition about mistakes? It's interesting that English doesn't have the concrete notion of "types", but people understand them intuitively. One reason for this is that it's very rare that a verb has more than 2-3 arguments, and if they are, they are denoted by grammar. I want to make writing code as natural as writing English. However, I can't use an English-like syntax, at least not for everything. For instance, English isn't very good at representing mathematical expressions. Instead of writing "the sum of two and three", we can just write "2+3". I also find it interesting how English uses prefix notation, but prefix notation nevertheless seems unintuitive when written in the form "+ 2 3". Perhaps it's because the English version includes the words "of" and "and", clearly indicating which argument goes where. English also has expressions like "the sum of one through ten". However, English isn't quite as precise about some things as I'd like. For instance, commas and semicolons aren't always enough to get rid of ambiguity. What I'd like is a language which is so clear that comments are unnecessary. If you don't understand what a function does, you can just look at the implementation and read it directly. I want people to *think* in this language, not in English! That means I should attempt to make it easy to pronounce, because we process natural languages through *sound*. I'm honestly not sure how I process code, but it's certainly not through sound! I'm not going to pronounce "int main left parenthesis args colon array left bracket string right bracket right parenthesis open brace", I'm going to see "int main(args:Array[String]) {" I notice, however, that as I typed that I imagined the sound made by the words "int", "main", "args", "array", and "string". One thing I notice about English is that it doesn't have *primitives* - there's no set of nouns that every other noun is defined in terms of. A house is made of wood, bricks, or whatever. Wood comes from trees. Trees are made of cells. Cells are made of organelles, which are made of molecules, which are made of atoms, which are made of protons, neutrons, and electrons. Protons and neutrons are made of quarks. I don't understand quarks and electrons. The thing is, people can understand things without understanding what they're made of. How is it, though, that infants learn their first words, if they have nothing to define them in terms of?
+
+One problem with this idea is performance: the compiler will have to inline a lot of stuff in order to get reasonable performance. But inlining will be easy if everything is purely functional. One very important thing about this language is that, given the properties of two components, it's possible to predict many properties of the composition of the components. For instance, performance should be easy to calculate, given the performance properties of the components. It seems like the ideal architecture for this language would be a concatenative language, since it forms a monoid and has many useful properties. However, concatenative languages usually use stacks, which are less than ideal for several reasons: they throw away lots of useful type information, they require significant extra work to access a particular parameter, you have to remember which input is in which position, and they're terrible for doing complicated manipulations on several inputs. However, they are easy to optimize. How can I implement one of these without using a stack? Stack-based concatenative languages, at least, don't require garbage collection, which I'd really like to avoid.
+
+The most important thing about this application is that I want programming to be a normal part of people's lives; a tool that they use every day.
+
+Before working on anything like this, I want a concatenative language which uses something other than stacks. It may even be "multidimensional", with multiple streams of data flowing through different places. Depending on the primitives it has access to, the code may be Turing-complete, or not. Also, this should have a very strong type system capable of verifying many characteristics of the code, and should be able to compute the performance cost. Different sections of code will have access to different primitives, which can be used to construct domain-specific languages. One thing I really need to get right is arithmetic: the syntax must be natural, or people will never use it.
+
+For optimization of assembly language, can we assume that, given 2 snippets of code that are already optimized, we can combine them and optimize the result fairly quickly? Maybe not, but we could invent an intermediate language that has this property, and then compile that through LLVM.
+
+It needs to be easy to combine groups of commands together, like batch files, as well as using pipes.
+
+Perhaps you should model the language, at least the pipeline, as a system which can never create or throw away data. For instance, a 'filter' function wouldn't be allowed because it would throw away data that doesn't meet the given criteria. However, a function that splits an input stream into 2 parts depending on whether it satisfies the criteria would work, even though it, in one sense, 'throws away' the function after it's done. However, if it operates on streams, it can be thought of as always running, so it never ends.
+
+What I want to end up doing is to write a book about computation. I need to investigate all the models of computation that I possibly can. I want to investigate what computation really *is*, its many forms, and how to utilize it in your daily life. I want to convince people that computation is *everything*. For this book to do what I want to, it has to touch on philosophical issues such as the meaning of life, but those certainly shouldn't be the focus - the purpose of the book isn't to push my beliefs on everybody else (after all, my beliefs may be wrong). I want to book to be timeless. I want the book to investigate how computational elements can come together to create *meaning*. It will definitely have to give people the idea that we can have "free will" even in a deterministic universe. I don't want to mention this directly, though - people will strongly oppose it. Instead, I'll give people evidence for it without mentioning it directly. One thing about this book is that I can't possibly say everything I want to in print - I need animations and interactivity. One more thing I want to convince people is that there's no difference between living in the "real world" and in a computer simulation. This book will obviously have to include stuff about AI, especially neural networks and other models of computation. I think a good programming language would have the feel of putting lego together to build something. I don't know how to achive this, but I'll know it when I get there. Interestingly, it seems to me like functional programming isn't quite the right way to go - it just feels wrong to me, which is strange because I prefer functional languages for their conciseness.
+
+I want to investigate the different ways to combine primitives, and how to combine them in order to achive Turing-completeness. First of all, if you have a language equivalent in power to a stack-based language (without the ability to make declarations), you may have quite a bit of power, depending on what primitives you're given. However, it's not Turing-complete unless you have first-class functions (which would allow you to construct the Y-combinator). I want to specifically look at systems that *aren't* Turing-complete.
+
+Let me investigate a system where each primitive is a node consisting of a number of inputs and outputs, which are connected to each other. To begin the computation, request the output from the final node (which plays a role similar to the 'main' function). That node will then request all of its inputs before it can begin its own computation (perhaps it's able to do short-circuit evaluation in some circumstances, so it may not need all of them). Evaluation proceeds in the same way for each node. Literals have one output and no inputs. "+" has 2 inputs and 1 output. "if" has 3 inputs and 1 output. A program is made up of a combination of these nodes. I'd like to find a simple textual representation of this system.
+
+That system is very constrained; you can't change the structure of the dag at runtime. In my concatenative language, which is somewhat similar, you *can* change it at runtime. However, it's harder to represent on a structure like a dag (my language uses deques instead, to linearize the dag). Programs aren't actually linear, and we shouldn't treat them as though they are. The only reason they appear linear is that it's the easiest way to represent them in text. Programming language design shouldn't be thought of as linear.
+
+One thing that's tricky to handle in a lot of these systems is exceptions.
+
+Have a look at J and K
+
+One thing I'd like to see in a language is some form of multiple dispatch. For instance, in Scala, to emulate multiple dispatch you have to use a match statement. There's got to be a better way.
+
+def collideWith(a:Asteroid, b:Asteroid) = ...
+def collideWith(a:Asteroid, b:Spaceship) = ...
+...
+
+val x:Any = new Asteroid
+val y:Any = new Spaceship
+collideWith(x, y) //calls the second function above
+
+For now, I'm going to completely ignore performance considerations.
+
+I always set my goals too high. There's no way I can design the language I want right away. I should stick to easier goals for now. My first goal: create a scripting language suitable as a shell to replace the default one. It should also be usable as a calculator. My 'concat' language is a natural place to start. However, it's missing some features that I need, most notably being able to execute arbitrary commands. Let me look at several possible syntaxes:
+  "rm test.txt" exec
+    Simple to implement; stringly typed
+  "rm" ["test.txt"] exec
+    Fairly simple to implement; less stringly typed, but verbose
+  "test.txt" rm
+    Obviously this syntax has to be implemented separately for every command.
+I really don't think this concatenative language is the way to go. It's an interesting experiment, but it falls apart for more complicated stuff. I'll think about using this syntax instead:
+  rm("test.txt")
+    Just like in C-like languages
+I'm not sure exactly what features this needs. Let me look at a somewhat larger example or two:
+  fac(x:Int) = x match {
+    0 -> 1
+    n -> n * fac(n-1)
+  }
+The language will use named tuples as its main data structure. They consist of a name, along with a list of name/type pairs, each of which may have a default value if none is specified. "fac(x:Int)" is an example of a named tuple. So is "Color(r:Float, g:Float, b:Float, a:Float=1.0)".
+
+Note that in a pipe chain like "a | b | c", there is no delimiter around the whole thing. If it's not delimited, it can be treated as a substitution into its parent expression (after accounting for side effects, of course). Therefore, if it is given extra parameters, they are treated as if they were appended to the end of the experssion. For instance, given "f = a | b | c", the expression "f x" would be equivalent to "a | b | c x".
+
+I'd like to organize code in a way that doesn't require garbage collection. What coding styles will allow this?
+
+Some objects (ADTs) should have a well-defined hierarchy. Others (objects) should be defined in terms of what you can do with them (structural typing).
+
+Notice that each entry in the match statement looks sort of like an anonymous function. This gives me the idea of allowing pattern matching in function definitions. Instead of writing "length xs = xs match {...}", write:
+  length Empty = 0
+  length (Cons x xs) = 1 + length xs
+This requires that data types start with uppercase letters and variables start with lowercase letters, as in Haskell.
+
+I should use dynamic typing for this language. I don't know why I haven't really considered using it until now, but it makes everything MUCH simpler. One downside is that ADTs and pattern matching are hard to do in a dynamic language. Perhaps I can use named tuples as a data type. For instance, I could do this:
+  list match {
+    Empty -> ...
+    Cons(x,xs) -> ...
+  }
+Nah, it's better to use a syntax with fewer parentheses and commas:
+  list match {
+    Empty -> ...
+    Cons x xs -> ...
+  }
+But what about default parameters?
+
+This language certainly needs to support pipes and probably more sophisticated forms of composition.
+
+ls | grep "test" | unlines | write "out.txt"
+
+A core data structure is the stream. Streams can be used to connect components together. For instance, ls returns a stream of filenames, grep takes a stream of strings and checks which ones contain have the given string, unlines changes the stream from a stream of strings to a stream of chars, and write outputs it to a file.
+
+Unlines may be implemented as:
+  unlines = pipe {inStream outStream -> repeat {
+    in = inStream get
+    in foreach (outStream put)
+    outStream put "\n"
+  }}
+
+My concat language has a good syntax for this type of thing. By adding local variables, unlines could be written as:
+  {inStream outStream -> [inStream get [outStream put] foreach '\n' outStream put] repeat} pipe 'unlines =
+
+The language will store some amount of state, such as information that is typically stored by shells, such as the current directory.
+
+ls find("test") unlines write("out.txt")
+  This is a very concise syntax for streams; the entries on the stack in this example are streams. Functions can take parameters as well.
+
+ls | find "test" | unlines | write "out.txt"
+  I like this syntax; it removes the need for a stack and allows for currying. However, I need to support optional parameters. How do I do that?
+    f a b:5 = a+b
+    f 2 //Is this "7" or a function that adds 2 to its argument?
+  How about this: currying is allowed only in certain circumstances. Specifically, all parameters must be accounted for *where the function is used*. So "f 2" unambiguously means 7; to get a function that adds 2, you have to do "x => f 2 x". Pipes work fine with this since they're just syntactic sugar. So this essentially bans currying. Oh well. Instead of having to write "x => x + 2", I can add the syntax "_ + 2". If you want to specify only a few of the parameters, you can write "f 1 2 _*". Functions taking an unlimited number of argument are also possible.
+
+  It might be possible to develop a way to allow currying and default parameters to coexist. Actually, this should work flawlessly out of the box: if you have a function with a required parameter and an optional parameter, and you provide it the required parameter, it should return a function taking either an optional parameter or no parameter, and it should decide which one as soon as it hits a delimiter. A delimiter is something like a closing paren or a pipe or other operator. A delimiter can also be a newline in certain cases, such as at the REPL and in a block.
+
+  For chains like "a | b | c", if you provide an argument afterwards, it applies to "c", since it desugars to "c (b (a))".
+
+  If, while, etc require no special syntax.
+
+  There needs to be a way to pass "flags" - things that are either on or off. These should use a very simple syntax; instead of being true or false, they should either be there or not. They can use the syntax "flagname?". One issue to solve is how to disambiguate between flag names and other names; perhaps they can be prefixed with a '-' sign, or a single quote?
+
+  Are there any syntactic ambiguities in this language?
+
+  In order to interface with programs written in other languages, there absolutely MUST be an easy way to call other programs! Perhaps any line prefixed with "$" will be run through bash? That way I could write "$sbt run" and similar. It's only one extra character and doesn't look too ugly. As long as the default prompt (perhaps "> ") doesn't conflict visually with the "$", it should be fine.
+
+  The pipe syntax only works with functions that take one input and one output.
+
+  Tuples are comma-separated, in parens.
+
+  zip (read "in.txt") (read "in2.txt") | map ((a b) -> a ++ ", " ++ b) | write "out.txt"
+    write "out.txt" (map (...) (zip (read "in.txt") (read "in2.txt")))
+
+  We don't support general coroutines, only generators. Also, we don't support actors.
+
+  Newlines are used as separators, but the language isn't otherwise whitespace-sensitive; code blocks are delimited by {}. Comments use // and /* */. Block comments nest.
+  Pattern matching needs to be possible on primitives (ints, strings...) and ADTs.
+
+  ADTs can use the syntax "data List = Empty | Cons _ List". _ stands for a value that isn't necessarily an ADT and can't be pattern-matched over. Then you can do:
+    list match {
+      Empty -> ...
+      Cons x xs -> ...
+    }
+
+  Generators are a bit strange since they must execute concurrently with the code that uses the results.
+
+  This could also be written:
+    write "out.txt" (unlines (find "text" (ls)))
+  Or, a la Haskell:
+    write "out.txt" $ unlines $ find "text" ls
+
+  Objects are defined like this:
+    obj = new {
+      a = 5
+      b = 10
+      var c <- 2
+      f x = x + 1
+    }
+    sub = obj with {
+      a = 10
+    }
+  And fields are accessed like this:
+    > obj a
+      5
+    > obj c
+      2
+    > obj c <- 5
+    > obj c
+      5
+    > obj f 2
+      3
+    > sub a
+      10
+    > sub f 2
+      3
+  Perhaps there can be a builtin object called "sh" that executes any command it's given through the normal shell. For instance 'sh rm "test.txt"' executes "rm test.txt". However, it should use Haskell's rawSystem function so it can handle spaces in filenames.
+
+It seems like ADTs don't fit into the language design very well. One solution I came up with last night is to, instead of defining "data List = Empty | Cons _ List", define only Empty and Cons, not List. But now I realize that that won't work since the definition of Cons needs access to List. Perhaps it shouldn't have typed parameters at all. Perhaps there's the syntax "data Cons x xs = {...}" which makes it possible to pattern match over it. This adds a minimal amount of new syntax (it adds the "data" keyword and removes the requirement to use the "new" keyword). However, what if you want to define a subtype of another type? "data Sub a = Super a with {...}". That doesn't work - the syntax isn't simple enough for the parser to be able to parse. So ADTs can't have subtypes. This is the case in Haskell, but not in Scala. However, even in Scala, subclassing case classes isn't that useful, and I've never done it or seen any examples of it.
+
+Arithmetic (2 + 3) is defined as calling the "+" method on 2 with 3 as the parameter.
+
+I'd like to decide on a syntax for arithmetic. Should it be "1 2 +", "1 + 2", "+(1,2)", or something else? I think I'll use infix notation, and I might as well use the same precedence conditions that Scala uses:
+  (all other special characters)
+
+  If it ends in a :, it's right-associative; otherwise it's left-associative.
+In order to define variables, you must use a block, which is a series of expressions surrounded by {}.
+Values and functions are defined by the = operator:
+  pi = 3.14
+  double(x) = x*x
+  fac(n) = if (n==0) 1 else n*fac(n-1)
+Anonymous functions are defined with the => keyword (not -> since that looks too similar to <- which is used for assignment):
+  test = x => x+1
+  add = x y => x+y
+Variables are defined with the var keyword and the <- operator:
+  fac2(n) = {
+    var x <- 0
+    range(1,n) foreach(n => x <- x*n)
+    x
+  }
+The only things that can go on the stack are streams. It would be too confusing to allow other types.
+What happens if you do:
+  range2(n) = range(1,n)
+You might expect it to return the range, but it actually puts it on the stack. It would be nice to eliminate the stack altogether since it conflicts with a lot of other stuff in the language. This might require a new syntax for pipes, though.
+

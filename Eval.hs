@@ -230,10 +230,8 @@ getExecArgs (ListArg xs:args) env = do
   listArgs <- getList =<< eval' xs env
   getExecArgs (ListArgNoEval listArgs:args) env
 getExecArgs (ListArgNoEval xs:args) env = (++) <$> concatMapM (`getStr` env) xs <*> getExecArgs args env
-getExecArgs (FlagArg flag:args) env
-  | null flag = error "Empty flag in getExecArgs"
-  | length flag == 1 = (("-"++flag):) <$> getExecArgs args env
-  | length flag > 1 = (("--"++flag):) <$> getExecArgs args env
+getExecArgs (FlagArg flag:args) env = (("-"++flag):) <$> getExecArgs args env
+getExecArgs (LongFlagArg flag:args) env = (("--"++flag):) <$> getExecArgs args env
 
 matchArg :: Bool -> String -> AccessType -> Expr -> EnvStack -> IOThrowsError (String,AccessType,Expr)
 matchArg evaluate name accessType arg env = do
@@ -278,6 +276,7 @@ matchParams params_ (FlagArg flag:args) env = do
 matchParams (FlagParam flag:params) args_ env = do
   (args,match) <- takeFlagArg args_ flag
   (:) (flag,ByVal,makeBool match) <$> matchParams params args env
+matchParams params_ (LongFlagArg flag:args) env = throwError $ "Long flag syntax is only supported when calling external scripts: --" ++ flag
 matchParams params [] env = throwError $ "Not enough arguments for function; unspecified arguments: " ++ intercalate ", " (map prettyPrint params)
 matchParams [] args env = throwError $ "Too many arguments for function; extra arguments: " ++ intercalate ", " (map prettyPrint args)
 matchParams params args env = throwError $ "matchParams unimplemented for " ++ show (params,args)

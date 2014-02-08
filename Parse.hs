@@ -1,5 +1,9 @@
 {-# LANGUAGE TupleSections #-}
 
+{-
+  Each parser should parse only the stated expression, with no whitespace on either side. This is necessary in order to support the operator syntax I want.
+-}
+
 module Parse where
 
 import Data.List
@@ -35,7 +39,7 @@ tryParseAssign = do
   expr <- parseNonStatement
   let
     parseAssign = do
-      val <-  symbol "<-" *> parseExpr
+      val <- try $ whitespace *> symbol "<-" /> parseExpr
       case getVar expr of
         Just var -> pure $ EAssign var val
         Nothing -> mzero
@@ -46,37 +50,15 @@ identifier' = do
   id <- identifier
   pure (id,accessType)
 
-parseDef = do
-  id <- identifier
-  let
-    parseValDef = EDef id <$> (symbol "=" *> parseExpr)
-    parseFnDef = do
-      params <- parseParams
-      body <- symbol "->" *> parseExpr
-      pure $ EDef id (EFn params body)
-  parseValDef <|> parseFnDef
+parseVarDef = EVarDef <$> (keyword "var" /> identifier) </> ((symbol "<-" /> parseExpr) <|> pure EVoid)
 
+statementSeparator = oneOf ";,\n"
+listSeparator = oneOf ";,"
 
-parseVarDef = do
-  name <- keyword "var" *> identifier
-  val <- (symbol "<-" *> parseExpr) <|> pure EVoid
-  pure $ EVarDef name val
-
-statementSeparator = lexeme (oneOf ";,\n")
-listSeparator = anyWhiteSpace *> oneOf ";," *> anyWhiteSpace
-
-parseBlock = EBlock <$> block
-block = grouper '{' *> sepStartEndBy parseExpr (some statementSeparator) <* grouper '}'
-parseCompound = sepStartEndBy parseExpr (some statementSeparator)
+block = between (grouper '{') (grouper '}') parseCompound
+parseCompound = sepStartEndBy (inWhitespace parseExpr) (some statementSeparator)
 
 sepStartEndBy parser sep = many sep *> sepEndBy parser sep
-
-parseParams = parseParams' <|> pure [] where
-  parseParams' = ((:) <$> parseOptParam <*> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> try parseFlagParam <*> parseParams) <|> ((:) <$> parseReqParam <*> parseParams)
-  parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
-  parseRepParam = RepParam <$> identifier' <* symbol "*"
-  parseReqParam = ReqParam <$> identifier'
-  parseFlagParam = FlagParam <$> identifierNoSpaces <* symbol "?"
 
 
 
@@ -91,80 +73,26 @@ parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [parseBlock, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
-
---This can't use "symbol" because of cases like "_+5"s
-parseUnknown = lexeme (string "_") *> pure EUnknown
-
-parseExec = do
-  symbol "/"
-  str <- some (noneOf "\n") --TODO: this doesn't support comments!
-  pure (EFnApp (eId "execRaw") [Arg $ makeString str])
-
+parseOtherExpr = asum [EBlock <$> block, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
 parsePipes = do
   start <- parseNonPipeExpr
-  xs <- chainl ((:[]) <$> ((,) <$> (symbol "|" *> identifier) <*> parseArgs)) (pure (++)) []
+  xs <- chainl ((:[]) <$> ((,) <$> try (whitespace *> symbol "|" /> identifier) </> parseArgs)) (pure (++)) []
   let
     f obj (id,args) = EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
 
-parseList = makeList' <$> (grouper '[' *> anyWhiteSpace *> sepEndBy parseExpr listSeparator <* grouper ']')
+parseList = makeList' <$> (grouper '[' *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ']')
 parseTuple = do
-  first <- grouper '(' *> anyWhiteSpace *> parseExpr
-  (grouper ')' *> pure first) <|> (makeTuple' . (first:) <$> (listSeparator *> sepEndBy parseExpr listSeparator <* grouper ')'))
+  first <- grouper '(' *> inAnyWhitespace parseExpr
+  (grouper ')' *> pure first) <|> (makeTuple' . (first:) <$> (listSeparator *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ')'))
 
-parseFnApp = parseNormalFnApp <|> parsePrefixOp
-parseNormalFnApp = do
-  fn <- parseNonFnAppExpr
-  args <- parseArgs
-  pure (EFnApp fn args)
-
-parsePrefixOp = EFnApp <$> (eId <$> operator') <*> ((:[]) <$> parseArg)
-parseArg = parseFlagArg <|> do
-  first <- try parseNonFnAppExpr
-  let
-    parseListArg = ListArg <$> (symbol "*" *> pure first)
-    parseKeywordArg = do
-      symbol ":"
-      case first of
-        EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
-        _ -> mzero
-  parseListArg <|> parseKeywordArg <|> pure (Arg first)
-parseFlagArg = FlagArg <$> (symbol "`" *> identifier)
-
-parseArgs = do
-  args <- many parseArg
-  (args++) <$> ((symbol "_*" *> pure [RestArgs]) <|> pure [])
-
-parseMemberAccess = do
-  first <- parseNonMemberAccess
-  (EMemberAccess first <$> (symbol "." *> identifier)) <|> pure first
-
-parseNew = ENew <$> (keyword "new" *> block)
+parseNew = ENew <$> (keyword "new" /> block)
 parseWith = do
   obj <- parseNonWithExpr
-  let withArg = (ENew <$> block) <|> parseNonWithExpr
-  xs <- chainl ((:[]) <$> (keyword "with" *> withArg)) (pure (++)) []
+  let withArg = whitespace *> ((ENew <$> block) <|> parseNonWithExpr)
+  xs <- chainl ((:[]) <$> (keyword "with" /> withArg)) (pure (++)) []
   pure $ foldl EWith obj xs
-
-parseIf = do
-  cond <- keyword "if" *> parseSingleTokenExpr
-  t <- anyWhiteSpace *> parseNonIf
-  f <- parseElse <|> pure EVoid
-  pure (EIf cond t f)
-parseElse = try (anyWhiteSpace *> keyword "else") *> anyWhiteSpace *> parseExpr
-
-parseFn = do
-  params <- parseParams
-  body <- symbol "=>" *> parseExpr
-  pure (EFn params body)
-
-parseBool = parseTrue <|> parseFalse
-parseTrue = keyword "true" *> pure (makeBool True)
-parseFalse = keyword "false" *> pure (makeBool False)
-parseVoid = keyword "void" *> pure EVoid
-
 
 ops = [
   "^",
@@ -178,59 +106,112 @@ ops = [
   "?\\~@#$"
   ]
 
-opTable = map (concatMap op) ops
+opTable = map (concatMap $ op False) ops ++ map (concatMap $ op True) ops
 
-op startChar = [binopL startChar, binopR startChar]
-binopL startChar = Infix (try $ do
+op reqSpaces startChar = [binopL startChar reqSpaces, binopR startChar reqSpaces]
+binopL startChar reqSpaces = Infix (try $ do
+  when reqSpaces someWhitespace
   name <- operator startChar False
+  when reqSpaces someWhitespace
   pure (\a b -> EFnApp (EMemberAccess a name) [Arg b])
   ) AssocLeft
-binopR startChar = Infix (try $ do
+binopR startChar reqSpaces = Infix (try $ do
+  when reqSpaces someWhitespace
   name <- operator startChar True
+  when reqSpaces someWhitespace
   pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
   ) AssocRight
 
---TODO: I removed ` because it's currently the syntax used to pass flags to foreign programs. When I improve the parser to be whitespace-sensitive, I can re-add it.
-opChars = "/<>?:\\|~!@#$%^&*+-="
-reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
-builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "`"]
-keywords = ["true", "false", "new", "with", "void", "if", "else", "var"]
-
-groupChars = "()[]{}"
-
-identStart = satisfy isAlpha
-identChar = satisfy (\x -> isAlphaNum x || x=='\'')
-
-identifier = lexeme backquoteIdentifier <|> (do
-  val <- lexeme $ (:) <$> identStart <*> many identChar
-  if val `elem` keywords then mzero else pure val) <?> "identifier"
-
-identifierNoSpaces = backquoteIdentifier <|> (do
-  val <- (:) <$> identStart <*> many identChar
-  if val `elem` keywords then mzero else pure val) <?> "identifier"
-
-backquoteIdentifier = char '`' *> many (noneOf "`") <* char '`'
 
 
-
-operator' = (do
-  val <- lexeme $ some $ satisfy (`elem` opChars)
+prefixOperator = (do
+  val <- some $ satisfy (`elem` opChars)
   if val `elem` reservedOps then mzero else pure val) <?> "operator"
 
 
 operator startChar rassoc = (do
   char startChar
-  val <- lexeme $ many (oneOf opChars)
+  val <- many (oneOf opChars)
   let str = startChar : val
   if rassoc /= (last str == ':') || str `elem` reservedOps then mzero else pure str
   ) <?> "operator"
 
 
 
+--This can't use "symbol" because of cases like "_+5"
+parseUnknown = (tryString "_") *> pure EUnknown
+
+
+parseDef = do
+  id <- identifier <* whitespace
+  let
+    parseValDef = EDef id <$> (symbol "=" /> parseExpr)
+    parseFnDef = EDef id ... EFn <$> parseParams </> (symbol "->" /> parseExpr)
+  parseValDef <|> parseFnDef
+
+parseFn = EFn <$> parseParams </> (symbol "=>" /> parseExpr)
+
+parseParams = parseParams' <|> pure [] where
+  parseParams' = ((:) <$> parseOptParam </> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> try parseFlagParam </> parseParams) <|> ((:) <$> parseReqParam </> parseParams)
+  parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
+  parseRepParam = RepParam <$> identifier' <* symbol "*"
+  parseReqParam = ReqParam <$> identifier'
+  parseFlagParam = FlagParam <$> identifier <* symbol "?"
+
+
+parseMemberAccess = do
+  first <- parseNonMemberAccess
+  (EMemberAccess first <$> (symbol "." *> identifier)) <|> pure first
+
+parseFnApp = parseNormalFnApp <|> parsePrefixOp
+parseNormalFnApp = EFnApp <$> parseNonFnAppExpr <*> parseArgs
+parsePrefixOp = EFnApp <$> (eId <$> prefixOperator) <*> ((:[]) <$> parseArg)
+--TODO: this could be made cleaner by not parsing whitespace before the argument
+parseArg = try (parseLongFlagArg <|> parseFlagArg <|> (whitespace *> do
+  first <- try parseNonFnAppExpr
+  let
+    parseListArg = ListArg <$> (symbol "*" *> pure first)
+    parseKeywordArg = do
+      symbol ":"
+      case first of
+        EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
+        _ -> mzero
+  parseListArg <|> parseKeywordArg <|> pure (Arg first)))
+parseLongFlagArg = LongFlagArg <$> (try $ someWhitespace *> symbol "--" *> identifier)
+parseFlagArg = FlagArg <$> (try $ someWhitespace *> symbol "-" *> some (noneOf spaceChars))
+parseArgs = do
+  args <- many parseArg
+  (args++) <$> ((symbol "_*" *> pure [RestArgs]) <|> pure [])
+
+
+identStart = satisfy isAlpha
+identChar = satisfy (\x -> isAlphaNum x || x=='\'')
+
+identifier = backquoteIdentifier <|> (do
+  val <- (:) <$> identStart <*> many identChar
+  if val `elem` keywords then mzero else pure val) <?> "identifier"
+
+backquoteIdentifier = char '`' *> many (noneOf "`") <* char '`'
+
+
+parseExec = do
+  symbol "/"
+  str <- some (noneOf "\n")
+  pure (EFnApp (eId "execRaw") [Arg $ makeString str])
+
+parseIf = EIf <$> (keyword "if" /> parseSingleTokenExpr) <*> (anyWhitespace *> parseNonIf) <*> (parseElse <|> pure EVoid)
+parseElse = try (anyWhitespace *> keyword "else") *> anyWhitespace *> parseExpr
+
+parseBool = parseTrue <|> parseFalse
+parseTrue = keyword "true" *> pure (makeBool True)
+parseFalse = keyword "false" *> pure (makeBool False)
+parseVoid = keyword "void" *> pure EVoid
+
+
 parseInt = makeInt <$> integer
 parseFloat = makeFloat <$> float
-parseChar = makeChar <$> lexeme (char '#' *> character)
-parseString bound = makeString <$> (char bound *> many (character' [bound]) <* char bound <* whiteSpace)
+parseChar = makeChar <$> (char '#' *> character)
+parseString bound = makeString <$> (char bound *> many (character' [bound]) <* char bound)
 character' omit = escapeChar <|> noneOf omit
 character = escapeChar <|> anyChar
 escapeChar = char '\\' *> asum (for escapeChars $ \(c,v) -> char c *> pure v)
@@ -242,44 +223,73 @@ escapeChars = [
   ('\\', '\\')
   ]
 
-parseWholeInput = between whiteSpace eof
 
-keyword str = assert (str `elem` keywords) $ lexeme (string str <* notFollowedBy (satisfy isAlphaNum))
-symbol str = assert (str `elem` builtinOps) $ lexeme (string str <* notFollowedBy (satisfy $ (`elem` opChars)))
-grouper c = assert (c `elem` groupChars) $ lexeme (char c)
+--- Primitives
 
-lexeme p = try p <* whiteSpace
 
---We don't allow newlines as whitespace because they are statement separators; the symbol' "\" followed by a newline must be used instead
-whiteSpace = whiteSpace' " \t"
-anyWhiteSpace = whiteSpace' " \t\n"
+parseWholeInput parser = inWhitespace parser <* eof
 
-whiteSpace' :: String -> Parsec String () ()
-whiteSpace' whitespace = skipMany (void (oneOf whitespace) <|> oneLineComment <|> multiLineComment <|> void (lexeme $ string "\\\n")) <?> "whitespace"
+keyword str = assert (str `elem` keywords) $ tryString str <* notFollowedBy (satisfy isAlphaNum)
+symbol str = assert (str `elem` builtinOps) $ tryString str <* notFollowedBy (satisfy $ (`elem` opChars))
+grouper c = assert (c `elem` groupChars) $ char c
+
+--TODO: I removed ` because it's currently the syntax used to pass flags to foreign programs. When I improve the parser to be whitespace-sensitive, I can re-add it.
+--TODO: can I actually re-add it? It's still used for backquoted identifiers.
+opChars = "/<>?:\\|~!@#$%^&*+-="
+reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
+builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--"]
+keywords = ["true", "false", "new", "with", "void", "if", "else", "var"]
+
+groupChars = "()[]{}"
+
+spaceChars = " \t\n"
+
+--- Whitespace
+
+whitespace = skipWhitespace " \t"
+anyWhitespace = skipWhitespace spaceChars
+someWhitespace = skipReqWhitespace " \t"
+
+inWhitespace = between whitespace whitespace
+inAnyWhitespace = between anyWhitespace anyWhitespace
+
+infixl 4 </>, />, </
+a /> b = a *> whitespace *> b
+a </ b = a <* whitespace <* b
+a </> b = a <*> (whitespace *> b)
+
+skipWhitespace :: String -> Parsec String () ()
+skipWhitespace chars = skipMany (void (oneOf chars) <|> oneLineComment <|> multiLineComment <|> void (string "\\\n")) <?> "whitespace"
+
+skipReqWhitespace :: String -> Parsec String () ()
+skipReqWhitespace chars = skipSome (void (oneOf chars) <|> oneLineComment <|> multiLineComment <|> void (string "\\\n")) <?> "whitespace"
+
+tryString = try . string
 
 commentLine = "//"
 commentStart = "/*"
 commentEnd = "*/"
 
 oneLineComment = do
-  try $ string commentLine
+  tryString commentLine
   skipMany (satisfy (/= '\n'))
 
 multiLineComment = do
-  try $ string commentStart
+  tryString commentStart
   inComment
 
 inComment =
-  try (string commentEnd >> pure ()) <|>
+  (tryString commentEnd >> pure ()) <|>
   (multiLineComment >> inComment) <|>
-  (skipMany1 (noneOf startEnd) >> inComment) <|>
+  (skipSome (noneOf startEnd) >> inComment) <|>
   (oneOf startEnd >> inComment)
   where
     startEnd = nub $ commentEnd ++ commentStart
 
 
+--- Numbers
 
-float = lexeme floating <?> "float"
+float = try floating <?> "float"
 
 floating = fractExponent =<< decimal
 
@@ -307,7 +317,7 @@ fraction = do
   where op d f = (f + fromIntegral (digitToInt d))/10.0
 
 integer :: Parsec String () Integer
-integer = lexeme (try prefixNumber <|> decimal) <?> "integer"
+integer = (try prefixNumber <|> decimal) <?> "integer"
 
 prefixNumber = char '0' *> (hexadecimal <|> binary <|> octal)
 
@@ -324,3 +334,7 @@ number base baseDigit = do
   digits <- some baseDigit
   let n = foldl' (\x d -> base*x + toInteger (digitToInt d)) 0 digits
   seq n (pure n)
+
+
+--TODO: add to Util
+skipSome = skipMany1

@@ -136,7 +136,7 @@ data Obj = Obj Env | PrimObj PrimData Env
 
 --TODO: should I rename RepParam to ListParam for consistency with ListArg?
 data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier | FlagParam String deriving Show
-data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String deriving Show
+data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String | LongFlagArg String deriving Show
 
 type IOThrowsError = ErrorT String IO
 

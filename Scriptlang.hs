@@ -2,8 +2,6 @@
 
 module Main where
 
---RESUME: I was just about to start making spaces matter in operators: "1+2 * 3+4" should be different than "1 + 2*3 + 4", and "f -a" should pass "a" as a flag to "f"
-
 {- TODO
   Running other programs:
     ls `a
@@ -18,12 +16,14 @@ module Main where
   Note that with this syntax, "f -5" doesn't call f with -5 as the argument, it calls f with a flag of "5" as the argument. You'd have to write "f (-5)" for the other interpretation.
   1+2 * 3+4 != 1 + 2*3 + 4
 
+  The code for detecting imbalanced groupers doesn't ignore groupers in comment
+
   In later versions:
-    "Invalid argument to ___" should be changed to something more meaningful
-    Add a way to look up the definition of a function; for instance, it should be possible to look up the definition of the "fac" function
-    Allow user-defined operator precedence and associativity. Scala's rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on.
+    "Invalid argument to <implementation detail>" should be changed to something more meaningful
+    Add a way to look up the definition of a function
+    Allow user-defined operator precedence and associativity. the current rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on, otherwise it would be unparseable.
     Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
-    Always print the path with forward slashes rather than backslashes (since backslashes are for escape characters, you'd need to write "\\" when you could just write "/")
+    Always print the path with forward slashes rather than backslashes (since backslashes are for escape characters, you'd need to write "\\" when you could just write "/") - this may require reimplementing things like "pwd" in order to get the slashes right.
     Add a way to run another script - calling runFile from within a script
     More I/O
     Glob syntax and regexes
@@ -42,17 +42,13 @@ module Main where
     Should it be possible to overload assignment?
     Add fields - like Scala's getters and setters
     Treat functions as objects with an "apply" method and "o" as a composition operator
-      They should also have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
+      They could also have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
     Make sure _ and especially _* work properly with by-name parameters.
     Function overloading
     Line numbers for errors
     Add a method to be called when a method isn't defined
     Cloning of objects?
     Get rid of EValClosure - it's only used for by-name parameters, so the two features can probably be merged
-
-  Improve error messages
-    Doing primitive operations on unsupported types, such as "3 + []"
-    Improve parse errors
 
   Do by-name optional parameters make sense?
   Disallow ~ on everything but parameters - zero-argument functions have replaced them
@@ -123,7 +119,7 @@ startEnv = envStackFromList [
   ("cd", stringUnop $ \str -> do
     lift $ setCurrentDirectory str
     makeString <$> lift getCurrentDirectory),
-  ("wd", nilop $ makeString <$> lift getCurrentDirectory)
+  ("wd", nilop $ makeString . replace '\\' '/' <$> lift getCurrentDirectory)
   ]
 
 parseEval str env = do
@@ -155,6 +151,7 @@ stdlib = "\
   \while ~cond ~f -> if cond {f; while ~cond ~f}\n\
   \\n\
   \println 'Scriptlang version 0.1'\n\
+  \pwd -> println (wd)\n\
   \pwd\n\
   \"
 
@@ -165,18 +162,24 @@ main = do
     Left err -> putStrLn err
     Right env -> repl env
 
+testParse parser = forever $ do
+  input <- replGetInput Nothing
+  case parse (parser <* eof) "test" input of
+    Left err -> putStrLn $ "Parse error: " ++ show err
+    Right expr -> print expr
+
 repl env = do
   input <- replGetInput Nothing
   expr_ <- runErrorT (parseInput "" input parseExpr desugar)
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
-      debug <- runErrorT (debugging env)
+      {-debug <- runErrorT (debugging env)
       case debug of
         Left err -> putStrLn err >> repl env
         Right debug -> when debug $ do
           print expr
-          putStrLn (prettyPrint expr)
+          putStrLn (prettyPrint expr)-}
 
       res <- runErrorT (replEval expr env)
       case res of
@@ -219,7 +222,7 @@ runString input env = do
 replGetInput cont = do
   case cont of
     Just _ -> putStr "... "
-    Nothing -> putStr "> "
+    Nothing -> putStr "script> "
   flush
   input_ <- catchJust (guard . isEOFError) (fmap Just getLine) (const $ pure Nothing)
   input <- case input_ of
