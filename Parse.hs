@@ -172,7 +172,7 @@ parseArg = try (parseLongFlagArg <|> parseFlagArg <|> (whitespace *> do
   let
     parseListArg = ListArg <$> (symbol "*" *> pure first)
     parseKeywordArg = do
-      symbol ":"
+      symbol "="
       case first of
         EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
         _ -> mzero
@@ -236,7 +236,9 @@ grouper c = assert (c `elem` groupChars) $ char c
 --TODO: I removed ` because it's currently the syntax used to pass flags to foreign programs. When I improve the parser to be whitespace-sensitive, I can re-add it.
 --TODO: can I actually re-add it? It's still used for backquoted identifiers.
 opChars = "/<>?:\\|~!@#$%^&*+-="
-reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", ":"]
+--These are operators that can't be redefined because they're used in the language syntax
+reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", "//", "/*", "*/"]
+--These are operators that are used as syntax in some cases, but can be redefined in others
 builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--"]
 keywords = ["true", "false", "new", "with", "void", "if", "else", "var"]
 

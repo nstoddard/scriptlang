@@ -3,20 +3,7 @@
 module Main where
 
 {- TODO
-  Running other programs:
-    ls `a
-    ls 'a
-    ls -a
-    ls \a
-  Use 3rd one; this can be made syntactically unambiguous with these rules:
-    a + b - applying the "+" operator to a with b as the argument
-    a+b - same thing
-    a +b - calling the function a with "+b" as an argument
-    a+ b - invalid
-  Note that with this syntax, "f -5" doesn't call f with -5 as the argument, it calls f with a flag of "5" as the argument. You'd have to write "f (-5)" for the other interpretation.
-  1+2 * 3+4 != 1 + 2*3 + 4
-
-  The code for detecting imbalanced groupers doesn't ignore groupers in comment
+  The code for detecting imbalanced groupers doesn't ignore groupers in comments
 
   In later versions:
     "Invalid argument to <implementation detail>" should be changed to something more meaningful
@@ -24,7 +11,6 @@ module Main where
     Allow user-defined operator precedence and associativity. the current rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on, otherwise it would be unparseable.
     Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
     Always print the path with forward slashes rather than backslashes (since backslashes are for escape characters, you'd need to write "\\" when you could just write "/") - this may require reimplementing things like "pwd" in order to get the slashes right.
-    Add a way to run another script - calling runFile from within a script
     More I/O
     Glob syntax and regexes
     Command history
@@ -35,12 +21,12 @@ module Main where
     Extension methods
     Data declarations
     Maps - perhaps I should hold off on implementing this until I've implemented pattern matching - it seems that pattern matching and maps could be combined to simplify the language - this is one thing that I find irritating about Scala; it's sometimes hard to decide which one to use
-    Unit testing
-    Reflection - checking which fields, methods, etc an object supportss
+    Reflection - checking which fields, methods, etc an object supports
     Imports
     Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
     Should it be possible to overload assignment?
-    Add fields - like Scala's getters and setters
+    Add fields - like Scala's getters and setters?
+      They should behave sort of like variables.
     Treat functions as objects with an "apply" method and "o" as a composition operator
       They could also have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
     Make sure _ and especially _* work properly with by-name parameters.
@@ -48,10 +34,8 @@ module Main where
     Line numbers for errors
     Add a method to be called when a method isn't defined
     Cloning of objects?
-    Get rid of EValClosure - it's only used for by-name parameters, so the two features can probably be merged
 
   Do by-name optional parameters make sense?
-  Disallow ~ on everything but parameters - zero-argument functions have replaced them
 -}
 
 import Data.List
@@ -98,28 +82,30 @@ startEnv = envStackFromList [
         lift $ system proc
         pure (EVoid, env)
       _ -> throwError "Invalid argument to execRaw"),
-  ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure EVoid), --TODO: THIS DOESN'T WORK
+  ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure (EVoid,env)), --TODO: THIS DOESN'T WORK
   ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid),
   ("print", objUnop' $ \obj env -> do
     expr <- call obj "toString" [] env
     case expr of
       EObj (PrimObj (PString str) _) -> lift $ putStr str
       x -> throwError $ "toString must return a string; not " ++ prettyPrint x
-    pure EVoid),
+    pure (EVoid,env)),
   ("println", objUnop' $ \obj env -> do
     expr <- call obj "toString" [] env
     case expr of
       EObj (PrimObj (PString str) _) -> lift $ putStrLn str
       x -> throwError $ "toString must return a string; not " ++ prettyPrint x
-    pure EVoid),
+    pure (EVoid,env)),
   ("readln", nilop $ makeString <$> lift getLine),
   ("eval", objUnop' $ \obj env -> case obj of
-    PrimObj (PString str) _ -> fst <$> parseEval str env
+    PrimObj (PString str) _ -> (,env) <$> fst <$> parseEval str env
     x -> throwError $ "Can't evaluate non-string: " ++ prettyPrint x),
   ("cd", stringUnop $ \str -> do
     lift $ setCurrentDirectory str
     makeString <$> lift getCurrentDirectory),
-  ("wd", nilop $ makeString . replace '\\' '/' <$> lift getCurrentDirectory)
+  ("wd", nilop $ makeString . replace '\\' '/' <$> lift getCurrentDirectory),
+  ("run", stringUnop' $ \file env -> do
+    (EVoid,) <$> runFile file env)
   ]
 
 parseEval str env = do

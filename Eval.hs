@@ -447,8 +447,8 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("::", unop $ \b -> pure $ makeList (b:a)),
   ("apply", primUnop $ onInt' (index a)),
-  ("map", unop' $ \fn env -> makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
-  ("filter", unop' $ \fn env -> makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)
+  ("map", unop' $ \fn env -> (,env) <$> makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
+  ("filter", unop' $ \fn env -> (,env) <$> makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)
   ]
 makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
@@ -475,13 +475,13 @@ index xs i = if i >= 0 && i < genericLength xs then pure (xs `genericIndex` i) e
 prim :: [String] -> (Map String Expr -> IOThrowsError Expr) -> Expr
 prim args f = EPrim (map reqParam args) $ \env -> (,env) <$> (f =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
 
-prim' :: [String] -> (Map String Expr -> EnvStack -> IOThrowsError Expr) -> Expr
-prim' args f = EPrim (map reqParam args) $ \env -> (,env) <$> (flip f env =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
+prim' :: [String] -> (Map String Expr -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
+prim' args f = EPrim (map reqParam args) $ \env -> (flip f env =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
 
 nilop :: IOThrowsError Expr -> Expr
 nilop ret = prim [] (const ret)
 
-nilop' :: (EnvStack -> IOThrowsError Expr) -> Expr
+nilop' :: (EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
 nilop' ret = prim' [] (\map env -> ret env)
 
 floatNilop = nilop . pure . makeFloat
@@ -489,7 +489,7 @@ floatNilop = nilop . pure . makeFloat
 unop :: (Expr -> IOThrowsError Expr) -> Expr
 unop f = prim ["x"] $ \args -> f (args!"x")
 
-unop' :: (Expr -> EnvStack -> IOThrowsError Expr) -> Expr
+unop' :: (Expr -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
 unop' f = prim' ["x"] $ \args -> f (args!"x")
 
 binop :: (Expr -> Expr -> IOThrowsError Expr) -> Expr
@@ -505,7 +505,7 @@ objUnop f = prim ["x"] $ \args -> case args!"x" of
   EObj obj -> f obj
   x -> throwError $ "Invalid argument to objUnop: " ++ prettyPrint x
 
-objUnop' :: (Obj -> EnvStack -> IOThrowsError Expr) -> Expr
+objUnop' :: (Obj -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
 objUnop' f = prim' ["x"] $ \args env -> case args!"x" of
   EObj obj -> f obj env
   x -> throwError $ "Invalid argument to objUnop': " ++ prettyPrint x
@@ -513,6 +513,11 @@ objUnop' f = prim' ["x"] $ \args env -> case args!"x" of
 stringUnop :: (String -> IOThrowsError Expr) -> Expr
 stringUnop f = objUnop $ \obj -> case obj of
   PrimObj (PString str) _ -> f str
+  x -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint x
+
+stringUnop' :: (String -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
+stringUnop' f = objUnop' $ \obj env -> case obj of
+  PrimObj (PString str) _ -> f str env
   x -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint x
 
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
