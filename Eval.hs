@@ -230,7 +230,6 @@ getStr expr env = do
 
 evalToStr expr env = (`getStr` env) =<< eval' expr env
 
---data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String deriving Show
 getExecArgs :: [Arg] -> EnvStack -> IOThrowsError [String]
 getExecArgs [] env = pure []
 getExecArgs (Arg arg:args) env = (++) <$> evalToStr arg env <*> getExecArgs args env
@@ -339,6 +338,8 @@ verifyArgs = verifyArgs' S.empty where
   verifyArgs' set (KeywordArg key _:args) = if S.member key set then throwError $ "Two definitions for keyword argument " ++ key
     else verifyArgs' (S.insert key set) args
   verifyArgs' set (FlagArg flag:args) = if S.member flag set then throwError $ "Two definitions for flag argument " ++ flag
+    else verifyArgs' (S.insert flag set) args
+  verifyArgs' set (LongFlagArg flag:args) = if S.member flag set then throwError $ "Two definitions for flag argument " ++ flag
     else verifyArgs' (S.insert flag set) args
   verifyArgs' set (RestArgs:args) = error "RestArgs in verifyArgs'"
 
@@ -579,6 +580,7 @@ desugarArg (ListArg expr) = ListArg (desugar expr)
 desugarArg (ListArgNoEval {}) = error "Can't have ListArgNoEval in desugarArg!"
 desugarArg RestArgs = RestArgs
 desugarArg (FlagArg flag) = FlagArg flag
+desugarArg (LongFlagArg flag) = LongFlagArg flag
 
 
 

@@ -5,6 +5,11 @@ module Main where
 {- TODO
   The code for detecting imbalanced groupers doesn't ignore groupers in comments
 
+
+script> hg.commit --amend
+Scriptlang: Eval.hs:(576,1)-(581,40): Non-exhaustive patterns in function desugarArg
+
+
   In later versions:
     "Invalid argument to <implementation detail>" should be changed to something more meaningful
     Add a way to look up the definition of a function
@@ -57,6 +62,7 @@ import qualified System.IO.Strict as Strict
 import Data.Foldable (asum, toList)
 import Debug.Trace
 import System.Process
+import qualified System.FilePath as P
 
 import Text.Parsec hiding ((<|>), many, optional, State)
 import Text.Parsec.Expr
@@ -118,32 +124,10 @@ debugging env = do
     EObj (PrimObj (PBool False) _) -> pure False
     x -> throwError $ "Invalid value for debug: " ++ prettyPrint x
 
-stdlib = "\
-  \var debug <- false\n\
-  \\n\
-  \pi = 3.141592653589793238462643383279\n\
-  \tau = 2*pi\n\
-  \\n\
-  \sumUpTo n -> (n * (n+1)) div 2\n\
-  \fac n -> if (n==0) 1 else n * fac (n-1)\n\
-  \\n\
-  \clear -> execRaw 'clear'\n\
-  \\n\
-  \id x -> x\n\
-  \\n\
-  \list xs* -> xs\n\
-  \\n\
-  \while ~cond ~f -> if cond {f; while ~cond ~f}\n\
-  \\n\
-  \compose a b -> x => a (b (x))\n\
-  \println 'Scriptlang version 0.1'\n\
-  \pwd -> println (wd)\n\
-  \pwd\n\
-  \"
-
 main = do
   env <- startEnv
-  env <- runErrorT $ envNewScope =<< runString stdlib env -- =<< runFile "stdlib" env
+  stdlibFile <- (P.</>"stdlib.script") <$> getAppUserDataDirectory "scriptlang"
+  env <- runErrorT $ envNewScope =<< runFile stdlibFile env
   case env of
     Left err -> putStrLn err
     Right env -> repl env
