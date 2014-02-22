@@ -5,11 +5,6 @@ module Main where
 {- TODO
   The code for detecting imbalanced groupers doesn't ignore groupers in comments
 
-
-script> hg.commit --amend
-Scriptlang: Eval.hs:(576,1)-(581,40): Non-exhaustive patterns in function desugarArg
-
-
   In later versions:
     "Invalid argument to <implementation detail>" should be changed to something more meaningful
     Add a way to look up the definition of a function
