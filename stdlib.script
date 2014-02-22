@@ -1,0 +1,33 @@
+var debug <- false
+
+pi = 3.141592653589793238462643383279
+tau = 2*pi
+
+sumUpTo n -> (n * (n+1)) div 2
+fac n -> if (n==0) 1 else n * fac (n-1)
+fib n -> {
+  var a <- 0
+  var b <- 1
+  var i <- 0
+  while (i < n) {
+    tmp = a
+    a <- a+b
+    b <- tmp
+    i <- i+1
+  }
+  a
+}
+
+clear -> execRaw 'clear'
+
+id x -> x
+
+list xs* -> xs
+
+while ~cond ~f -> if cond {f; while ~cond ~f}
+
+compose a b -> x => a (b (x))
+
+println 'Scriptlang version 0.1'
+pwd -> println (wd)
+pwd
