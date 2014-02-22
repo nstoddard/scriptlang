@@ -27,8 +27,7 @@ module Main where
     Should it be possible to overload assignment?
     Add fields - like Scala's getters and setters?
       They should behave sort of like variables.
-    Treat functions as objects with an "apply" method and "o" as a composition operator
-      They could also have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
+    Functions could have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
     Make sure _ and especially _* work properly with by-name parameters.
     Function overloading
     Line numbers for errors
@@ -75,7 +74,7 @@ startEnv = envStackFromList [
   ("!", primUnop $ onBool not),
   ("exit", nilop (lift exitSuccess)),
   ("help", makeString "TODO: write documentation"),
-  ("execRaw", EPrim [reqParam "proc"] $ \env -> do
+  ("execRaw", ePrim [reqParam "proc"] $ \env -> do
     proc <- envLookup' "proc" env
     case proc of
       (EObj (PrimObj (PString proc) _)) -> do
@@ -136,6 +135,7 @@ stdlib = "\
   \\n\
   \while ~cond ~f -> if cond {f; while ~cond ~f}\n\
   \\n\
+  \compose a b -> x => a (b (x))\n\
   \println 'Scriptlang version 0.1'\n\
   \pwd -> println (wd)\n\
   \pwd\n\

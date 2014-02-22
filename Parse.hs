@@ -146,10 +146,10 @@ parseDef = do
   id <- identifier <* whitespace
   let
     parseValDef = EDef id <$> (symbol "=" /> parseExpr)
-    parseFnDef = EDef id ... EFn <$> parseParams </> (symbol "->" /> parseExpr)
+    parseFnDef = EDef id ... eFn <$> parseParams </> (symbol "->" /> parseExpr)
   parseValDef <|> parseFnDef
 
-parseFn = EFn <$> parseParams </> (symbol "=>" /> parseExpr)
+parseFn = eFn <$> parseParams </> (symbol "=>" /> parseExpr)
 
 parseParams = parseParams' <|> pure [] where
   parseParams' = ((:) <$> parseOptParam </> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> try parseFlagParam </> parseParams) <|> ((:) <$> parseReqParam </> parseParams)

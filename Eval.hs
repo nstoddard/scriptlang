@@ -30,9 +30,7 @@ import Util
 import Expr
 
 
-
-isNilop (EClosure xs _ _) = all isNilop' xs
-isNilop (EPrim xs _) = all isNilop' xs
+isNilop (EObj (FnObj params _ _)) = all isNilop' params
 isNilop _ = False
 
 isNilop' (OptParam {}) = True
@@ -105,15 +103,17 @@ eval (EMemberAccessGetVar obj id) env = do
       pure (val, env)
     EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
+eval (EObj (FnObj params (Fn body) fnEnv)) env = do
+  verifyParams params
+  pure (EObj (FnObj params (Closure body env) fnEnv), env)
+eval prim@(EObj (FnObj _ (Prim _) _)) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
+eval closure@(EObj (FnObj _ (Closure _ _) _)) env = pure (closure,env) --TODO: this used to give an error but is now enabled; why?
 eval (EObj obj) env = pure (EObj obj, env)
 eval (EBlock []) env = pure (EVoid, env)
 eval (EBlock exprs) env = do
   env' <- envNewScope env
   vals <- forM exprs $ \expr -> eval expr env'
   pure (fst $ last vals, env)
-eval (EFn params body) env = do
-  verifyParams params
-  pure (EClosure params body env, env)
 eval (EFnApp fn args) env = do
   (fn',_) <- eval fn env
   case fn' of
@@ -124,20 +124,31 @@ eval (EFnApp fn args) env = do
       case res of
         Left err -> throwError $ "Identifier or program not found: " ++ prog
         Right res -> pure (EVoid, env)
-    EClosure params body closure -> do
-      verifyArgs args
-      args' <- matchParams params args env
-      bodyEnv <- envNewScope closure
-      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
-      (res,_) <- eval body bodyEnv
-      pure (res,env)
-    EPrim params fn' -> do
-      verifyArgs args
-      args' <- matchParams params args env
-      bodyEnv <- envNewScope =<< lift newEnvStack
-      forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
-      (res,_) <- fn' bodyEnv
-      pure (res,env)
+    EObj (FnObj params fnBody fnEnv) -> do
+      let
+        evalFnApp = case fnBody of
+          Closure body closure -> do
+            verifyArgs args
+            args' <- matchParams params args env
+            bodyEnv <- envNewScope closure
+            forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
+            (res,_) <- eval body bodyEnv
+            pure (res,env)
+          Prim fn' -> do
+            verifyArgs args
+            args' <- matchParams params args env
+            bodyEnv <- envNewScope env
+            forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
+            (res,_) <- fn' bodyEnv
+            pure (res,env)
+          Fn f -> throwError $ "Evaluating a function call of a non-closure: " ++ show (params,f,args)
+      case args of
+        (Arg (EId (id,ByVal)):args) -> do
+          val <- envLookup id =<< lift (envStackFromEnv fnEnv)
+          case val of
+            Just (val,ByVal) -> eval (EFnApp val args) env
+            Nothing -> evalFnApp
+        _ -> evalFnApp
     EObj obj -> case args of
       [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
       args'@(Arg (EId (id,ByVal)):args) -> do
@@ -151,8 +162,6 @@ eval (EFnApp fn args) env = do
       [] -> pure (EVoid,env)
       args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
     x -> throwError ("Invalid function: " ++ prettyPrint x)
-eval prim@(EPrim {}) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
-eval closure@(EClosure {}) env = pure (closure,env)--throwError "Can't evaluate closures; this should never happen"
 eval (ENew exprs) env = do
   env' <- envNewScope env
   forM_ exprs $ \expr -> eval expr env'
@@ -464,19 +473,120 @@ getList x = throwError $ "Not a list: " ++ prettyPrint x
 makeList' xs = EFnApp makeListPrim (map Arg xs)
 makeTuple' xs = EFnApp makeTuplePrim (map Arg xs)
 
-makeListPrim = EPrim [repParam "xs"] (\env -> (,env) . makeList . fromEList <$> envLookup' "xs" env)
-makeTuplePrim = EPrim [repParam "xs"] (\env -> (,env) . makeTuple . fromEList <$> envLookup' "xs" env)
+makeListPrim = ePrim [repParam "xs"] (\env -> (,env) . makeList . fromEList <$> envLookup' "xs" env)
+makeTuplePrim = ePrim [repParam "xs"] (\env -> (,env) . makeTuple . fromEList <$> envLookup' "xs" env)
 
 index :: [a] -> Integer -> IOThrowsError a
 index xs i = if i >= 0 && i < genericLength xs then pure (xs `genericIndex` i) else throwError "Invalid index!"
 
 
 
+--TODO: turn this into a type class?
+desugar :: Expr -> Expr
+desugar EVoid = EVoid
+desugar (EId id) = EId id
+desugar (EFnApp EUnknown []) = EUnknown
+desugar (EFnApp fn args) = processUnknownArgs (desugar fn) (map desugarArg args)
+desugar (EMemberAccess a b) = EMemberAccess (desugar a) b
+desugar (EDef name val) = EDef name (desugar val)
+desugar (EVarDef name val) = EVarDef name (desugar val)
+desugar (EAssign a b) = EAssign (desugar a) (desugar b)
+desugar (EVar _) = error "Can't have an EVar in desugar!"
+desugar (EGetVar id) = EGetVar id
+desugar (EMemberAccessGetVar a b) = EMemberAccessGetVar (desugar a) b
+desugar (EBlock xs) = EBlock (map desugar xs)
+desugar (ENew xs) = ENew (map desugar xs)
+desugar (EWith a b) = EWith (desugar a) (desugar b)
+desugar (EObj x) = EObj $ desugarObj x
+desugar (EIf a b c) = EIf (desugar a) (desugar b) (desugar c)
+desugar EUnknown = EUnknown
+
+desugarObj :: Obj -> Obj
+desugarObj (Obj env) = Obj env
+desugarObj (PrimObj primData env) = PrimObj primData env
+desugarObj (FnObj params fn env) = FnObj (map desugarParam params) (desugarFn fn) env
+
+desugarFn :: Fn -> Fn
+desugarFn (Prim x) = Prim x
+desugarFn (Fn body) = Fn (desugar body)
+desugarFn (Closure {}) = error "Can't have a closure in desugarFn!"
+
+fnEnv fn = envFromList [
+  ("o", unop' $ \fn2 env -> do
+    compose <- lookupID "compose" env
+    (,env) <$> apply compose [Arg fn, Arg fn2] env)
+  ]
+
+--These are defined in an unusual way. The function effectively contains a copy of itself in the environment. This is necessary in order for the environment to be able to use the function in computations.
+eFn params body = let fn = EObj (FnObj params (Fn body) (fnEnv fn)) in fn
+ePrim params body = let fn = EObj (FnObj params (Prim body) (fnEnv fn)) in fn
+
+processUnknownArgs :: Expr -> [Arg] -> Expr
+--TODO: support the case where the fn is EMemberAccess and there's no params
+processUnknownArgs (EMemberAccess obj field) [] = if isUnknown obj
+  then eFn [reqParam "_a"] (EFnApp (EMemberAccess (eId "_a") field) [])
+  else EFnApp (EMemberAccess obj field) []
+processUnknownArgs fn [] = EFnApp fn []
+--TODO: remove this code duplication
+processUnknownArgs (EMemberAccess obj field) args = case (isUnknown obj, not (null unknowns), hasRestArgs) of
+  (False,_,True) -> eFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (EMemberAccess obj field) (replaceUnknowns args 0))
+  (True,_,True) -> eFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (EMemberAccess (eId "_a") field) (replaceUnknowns args 1))
+  (True,_,False) -> eFn (map reqParam unknowns) (EFnApp (EMemberAccess (eId "_a") field) (replaceUnknowns args 1))
+  (False,True,False) -> eFn (map reqParam unknowns) (EFnApp (EMemberAccess obj field) (replaceUnknowns args 0))
+  (False,False,False) -> EFnApp (EMemberAccess obj field) args
+  where
+    name i = "_" ++ [chr (i + ord 'a')]
+    objUnknowns = if isUnknown obj then 1 else 0
+    unknowns = map name [0..objUnknowns+countBy isUnknownArg args-1]
+    hasRestArgs = if null args then False else isRestArgs (last args)
+    replaceUnknowns [] i = []
+    replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
+    replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]
+    replaceUnknowns (arg:args) i = arg : replaceUnknowns args i
+processUnknownArgs fn args = case (isUnknown fn, not (null unknowns), hasRestArgs) of
+  (False,_,True) -> eFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp fn (replaceUnknowns args 0))
+  (True,_,True) -> eFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (eId "_a") (replaceUnknowns args 1))
+  (True,_,False) -> eFn (map reqParam unknowns) (EFnApp (eId "_a") (replaceUnknowns args 1))
+  (False,True,False) -> eFn (map reqParam unknowns) (EFnApp fn (replaceUnknowns args 0))
+  (False,False,False) -> EFnApp fn args
+  where
+    name i = "_" ++ [chr (i + ord 'a')]
+    fnUnknowns = if isUnknown fn then 1 else 0
+    unknowns = map name [0..fnUnknowns+countBy isUnknownArg args-1]
+    hasRestArgs = if null args then False else isRestArgs (last args)
+    replaceUnknowns [] i = []
+    replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
+    replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]
+    replaceUnknowns (arg:args) i = arg : replaceUnknowns args i
+
+isUnknown EUnknown = True
+isUnknown _ = False
+
+isUnknownArg (Arg EUnknown) = True
+isUnknownArg _ = False
+
+isRestArgs RestArgs = True
+isRestArgs _ = False
+
+desugarParam (ReqParam id) = ReqParam id
+desugarParam (OptParam id expr) = OptParam id (desugar expr)
+desugarParam (RepParam id) = RepParam id
+desugarParam (FlagParam flag) = FlagParam flag
+
+desugarArg (Arg expr) = Arg (desugar expr)
+desugarArg (KeywordArg id expr) = KeywordArg id (desugar expr)
+desugarArg (ListArg expr) = ListArg (desugar expr)
+desugarArg (ListArgNoEval {}) = error "Can't have ListArgNoEval in desugarArg!"
+desugarArg RestArgs = RestArgs
+desugarArg (FlagArg flag) = FlagArg flag
+
+
+
 prim :: [String] -> (Map String Expr -> IOThrowsError Expr) -> Expr
-prim args f = EPrim (map reqParam args) $ \env -> (,env) <$> (f =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
+prim args f = ePrim (map reqParam args) $ \env -> (,env) <$> (f =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
 
 prim' :: [String] -> (Map String Expr -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
-prim' args f = EPrim (map reqParam args) $ \env -> (flip f env =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
+prim' args f = ePrim (map reqParam args) $ \env -> (flip f env =<< M.fromList <$> mapM (\arg -> (arg,) <$> envLookup' arg env) args)
 
 nilop :: IOThrowsError Expr -> Expr
 nilop ret = prim [] (const ret)

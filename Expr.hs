@@ -105,12 +105,11 @@ data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString
 data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
-  EPrim [Param] (EnvStack -> IOThrowsError (Expr,EnvStack)) | EFn [Param] Expr |
   EExec String [String] |
   EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
-  EClosure [Param] Expr EnvStack | EValClosure Expr EnvStack |
+  EValClosure Expr EnvStack |
   EIf Expr Expr Expr |
   EUnknown
 
@@ -127,12 +126,15 @@ getVar _ = Nothing
 getExprEnv :: Expr -> IOThrowsError EnvStack
 getExprEnv (EObj (Obj env)) = lift $ envStackFromEnv env
 getExprEnv (EObj (PrimObj _ env)) = lift $ envStackFromEnv env
-getExprEnv (EClosure _ _ env) = pure env
+getExprEnv (EObj (FnObj _ (Closure _ env) _)) = pure env
 getExprEnv x = throwError $ "No environment for: " ++ show x
 
 data AccessType = ByVal | ByName deriving (Eq,Show)
 
-data Obj = Obj Env | PrimObj PrimData Env
+--When a FnObj is called, it looks in the Env to see if it can handle the message. If so, it does. If not, it actually calls the function.
+data Obj = Obj Env | PrimObj PrimData Env | FnObj [Param] Fn Env
+
+data Fn = Prim (EnvStack -> IOThrowsError (Expr,EnvStack)) | Fn Expr | Closure Expr EnvStack
 
 --TODO: should I rename RepParam to ListParam for consistency with ListArg?
 data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier | FlagParam String deriving Show
@@ -190,8 +192,6 @@ instance Pretty Expr where
   pretty (EMemberAccess obj id) = if isOperator id
     then pretty obj </> pretty id
     else pretty obj <//> pretty "." <//> pretty id
-  pretty (EPrim _ _) = pretty "<prim>"
-  pretty (EFn params body) = pretty "(" <//> hsep (map pretty params) </> pretty "=>" </> pretty body <//> pretty ")"
   pretty (EDef id val) = pretty id </> pretty "=" </> pretty val
   pretty (EVarDef id val) = pretty "var" </> pretty id </> pretty "<-" </> pretty val
   pretty (EAssign var val) = pretty var </> pretty "<-" </> pretty val
@@ -199,7 +199,6 @@ instance Pretty Expr where
   pretty (ENew xs) = pretty "(" <//> pretty "new" </> prettyBlock xs <//> pretty ")"
   pretty (EWith a b) = pretty a </> pretty "with" </> pretty b
   pretty (EObj obj) = pretty obj
-  pretty (EClosure params body env) = pretty (EFn params body)
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
   pretty (EVar _) = pretty "<var>"
   pretty (EGetVar id) = pretty "<getVar>"
@@ -207,6 +206,11 @@ instance Pretty Expr where
   pretty EUnknown = pretty "_"
   pretty (EValClosure expr env) = pretty expr
   pretty (EExec prog args) = pretty prog </> hsep (map pretty args)
+
+instance Pretty Fn where
+  pretty (Prim _) = pretty "<prim>"
+  pretty (Fn body) = pretty body
+  pretty (Closure body env) = pretty body
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x
@@ -223,12 +227,20 @@ instance Pretty PrimData where
 instance Pretty Obj where
   pretty (Obj _) = pretty "<object>"
   pretty (PrimObj prim _) = pretty prim
+  pretty (FnObj params fn _) = pretty "(" <//> hsep (map pretty params) </> pretty "=>" </> pretty fn <//> pretty ")"
 
 
 --This can't be derived automatically because of EnvStack
 instance Show Obj where
   show (Obj _) = "Obj _"
   show (PrimObj prim _) = "(" ++ show prim ++ ")"
+  show (FnObj params fn _) = "(EFn " ++ show params ++ " " ++ show fn ++ ")"
+
+instance Show Fn where
+  show (Prim _)  = "<prim>"
+  show (Fn body) = show body
+  show (Closure body env) = "<closure of: " ++ show body ++ ")"
+  
 
 --This can't be derived automatically because of EPrim
 instance Show Expr where
@@ -236,8 +248,6 @@ instance Show Expr where
   show (EId x)             = "(EId " ++ show x ++ ")"
   show (EFnApp x xs)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ " " ++ ")"
   show (EMemberAccess x y) = "(EMemberAccess " ++ show x ++ " " ++ show y ++ ")"
-  show (EPrim _ _)         = "(EPrim <prim>" ++ ")"
-  show (EFn params body)   = "(EFn " ++ show params ++ " " ++ show body ++ ")"
   show (EDef a b)          = "(EDef " ++ show a ++ " " ++ show b ++ ")"
   show (EVarDef a b)       = "(EVarDef " ++ show a ++ " " ++ show b ++ ")"
   show (EAssign a b)       = "(EAssign " ++ show a ++ " " ++ show b ++ ")"
@@ -248,7 +258,6 @@ instance Show Expr where
   show (ENew x)            = "(ENew " ++ show x ++ ")"
   show (EWith a b)         = "(EWith " ++ show a ++ " " ++ show b ++ ")"
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
-  show (EClosure a b env)  = "(EClosure " ++ show a ++ " " ++ show b ++ " " ++ "<env>" ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
   show EUnknown            = "EUnknown"
 
@@ -259,85 +268,3 @@ isOperator = not . isAlphaNum . head
 getBool (EObj (PrimObj (PBool True) _)) = pure True
 getBool (EObj (PrimObj (PBool False) _)) = pure False
 getBool x = throwError $ "Not a bool: " ++ prettyPrint x
-
-
-desugar :: Expr -> Expr
-desugar EVoid = EVoid
-desugar (EId id) = EId id
-desugar (EFnApp EUnknown []) = EUnknown
-desugar (EFnApp fn args) = processUnknownArgs (desugar fn) (map desugarArg args)
-desugar (EMemberAccess a b) = EMemberAccess (desugar a) b
-desugar prim@(EPrim {}) = prim
-desugar (EFn params body) = EFn (map desugarParam params) (desugar body)
-desugar (EDef name val) = EDef name (desugar val)
-desugar (EVarDef name val) = EVarDef name (desugar val)
-desugar (EAssign a b) = EAssign (desugar a) (desugar b)
-desugar (EVar _) = error "Can't have an EVar in desugar!"
-desugar (EGetVar id) = EGetVar id
-desugar (EMemberAccessGetVar a b) = EMemberAccessGetVar (desugar a) b
-desugar (EBlock xs) = EBlock (map desugar xs)
-desugar (ENew xs) = ENew (map desugar xs)
-desugar (EWith a b) = EWith (desugar a) (desugar b)
-desugar (EObj x) = EObj x
-desugar (EClosure {}) = error "Can't have a closure in desugar!"
-desugar (EIf a b c) = EIf (desugar a) (desugar b) (desugar c)
-desugar EUnknown = EUnknown
-
-processUnknownArgs :: Expr -> [Arg] -> Expr
---TODO: support the case where the fn is EMemberAccess and there's no params
-processUnknownArgs (EMemberAccess obj field) [] = if isUnknown obj
-  then EFn [reqParam "_a"] (EFnApp (EMemberAccess (eId "_a") field) [])
-  else EFnApp (EMemberAccess obj field) []
-processUnknownArgs fn [] = EFnApp fn []
---TODO: remove this code duplication
-processUnknownArgs (EMemberAccess obj field) args = case (isUnknown obj, not (null unknowns), hasRestArgs) of
-  (False,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (EMemberAccess obj field) (replaceUnknowns args 0))
-  (True,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (EMemberAccess (eId "_a") field) (replaceUnknowns args 1))
-  (True,_,False) -> EFn (map reqParam unknowns) (EFnApp (EMemberAccess (eId "_a") field) (replaceUnknowns args 1))
-  (False,True,False) -> EFn (map reqParam unknowns) (EFnApp (EMemberAccess obj field) (replaceUnknowns args 0))
-  (False,False,False) -> EFnApp (EMemberAccess obj field) args
-  where
-    name i = "_" ++ [chr (i + ord 'a')]
-    objUnknowns = if isUnknown obj then 1 else 0
-    unknowns = map name [0..objUnknowns+countBy isUnknownArg args-1]
-    hasRestArgs = if null args then False else isRestArgs (last args)
-    replaceUnknowns [] i = []
-    replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
-    replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]
-    replaceUnknowns (arg:args) i = arg : replaceUnknowns args i
-processUnknownArgs fn args = case (isUnknown fn, not (null unknowns), hasRestArgs) of
-  (False,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp fn (replaceUnknowns args 0))
-  (True,_,True) -> EFn (map reqParam unknowns ++ [repParam "_xs"]) (EFnApp (eId "_a") (replaceUnknowns args 1))
-  (True,_,False) -> EFn (map reqParam unknowns) (EFnApp (eId "_a") (replaceUnknowns args 1))
-  (False,True,False) -> EFn (map reqParam unknowns) (EFnApp fn (replaceUnknowns args 0))
-  (False,False,False) -> EFnApp fn args
-  where
-    name i = "_" ++ [chr (i + ord 'a')]
-    fnUnknowns = if isUnknown fn then 1 else 0
-    unknowns = map name [0..fnUnknowns+countBy isUnknownArg args-1]
-    hasRestArgs = if null args then False else isRestArgs (last args)
-    replaceUnknowns [] i = []
-    replaceUnknowns (Arg EUnknown:args) i = Arg (eId $ name i) : replaceUnknowns args (i+1)
-    replaceUnknowns [RestArgs] i = [ListArg (eId "_xs")]
-    replaceUnknowns (arg:args) i = arg : replaceUnknowns args i
-
-isUnknown EUnknown = True
-isUnknown _ = False
-
-isUnknownArg (Arg EUnknown) = True
-isUnknownArg _ = False
-
-isRestArgs RestArgs = True
-isRestArgs _ = False
-
-desugarParam (ReqParam id) = ReqParam id
-desugarParam (OptParam id expr) = OptParam id (desugar expr)
-desugarParam (RepParam id) = RepParam id
-desugarParam (FlagParam flag) = FlagParam flag
-
-desugarArg (Arg expr) = Arg (desugar expr)
-desugarArg (KeywordArg id expr) = KeywordArg id (desugar expr)
-desugarArg (ListArg expr) = ListArg (desugar expr)
-desugarArg (ListArgNoEval {}) = error "Can't have ListArgNoEval in desugarArg!"
-desugarArg RestArgs = RestArgs
-desugarArg (FlagArg flag) = FlagArg flag
