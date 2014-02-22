@@ -115,8 +115,8 @@ eval (EBlock exprs) env = do
   vals <- forM exprs $ \expr -> eval expr env'
   pure (fst $ last vals, env)
 eval (EFnApp fn args) env = do
-  (fn',_) <- eval fn env
-  case fn' of
+  (fn,_) <- eval fn env
+  case fn of
     EExec prog firstArgs -> do
       verifyArgs args
       args' <- getExecArgs args env
@@ -134,12 +134,12 @@ eval (EFnApp fn args) env = do
             forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
             (res,_) <- eval body bodyEnv
             pure (res,env)
-          Prim fn' -> do
+          Prim fn -> do
             verifyArgs args
             args' <- matchParams params args env
             bodyEnv <- envNewScope env
             forM_ args' $ \(name,accessType,val) -> envDefine name bodyEnv (pure ((val,accessType),val))
-            (res,_) <- fn' bodyEnv
+            (res,_) <- fn bodyEnv
             pure (res,env)
           Fn f -> throwError $ "Evaluating a function call of a non-closure: " ++ show (params,f,args)
       case args of
@@ -155,8 +155,7 @@ eval (EFnApp fn args) env = do
         val <- envLookup id env
         case val of
           Just val -> evalApply obj args' env
-          Nothing -> case args of
-            args -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
+          Nothing -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
     EVoid -> case args of
       [] -> pure (EVoid,env)
@@ -300,22 +299,24 @@ takeKeywordArg params name = case length match of
       OptParam (name',_) _ -> name == name'
 
 takeFlagParam :: [Param] -> String -> IOThrowsError [Param]
-takeFlagParam params flag = case length match of
-  0 -> throwError $ "No match for flag " ++ flag
-  1 -> pure noMatch
-  _ -> throwError $ "Multiple matches for flag " ++ flag ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
-  where
-    (match, noMatch) = flip partition params $ \param -> case param of
-      FlagParam flag' -> flag == flag'
+takeFlagParam params flag = do
+  (match, noMatch) <- flip partitionM params $ \param -> case param of
+    FlagParam flag' -> pure $ flag == flag'
+    _ -> throwError "Invalid flag."
+  case length match of
+    0 -> throwError $ "No match for flag " ++ flag
+    1 -> pure noMatch
+    _ -> throwError $ "Multiple matches for flag " ++ flag ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
 
 takeFlagArg :: [Arg] -> String -> IOThrowsError ([Arg],Bool)
-takeFlagArg args flag = case length match of
-  0 -> pure (args, False)
-  1 -> pure (noMatch, True)
-  _ -> throwError $ "Multiple matches for flag " ++ flag ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
-  where
-    (match, noMatch) = flip partition args $ \arg -> case arg of
-      FlagArg flag' -> flag == flag'
+takeFlagArg args flag = do
+  (match, noMatch) <- flip partitionM args $ \arg -> case arg of
+    FlagArg flag' -> pure $ flag == flag'
+    _ -> throwError "Invalid flag."
+  case length match of
+    0 -> pure (args, False)
+    1 -> pure (noMatch, True)
+    _ -> throwError $ "Multiple matches for flag " ++ flag ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
 
 verifyParams :: [Param] -> IOThrowsError ()
 verifyParams = verifyParams' S.empty where
@@ -462,6 +463,9 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("empty", nilop $ pure (makeBool $ null a)),
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("::", unop $ \b -> pure $ makeList (b:a)),
+  ("++", primUnop $ \x -> case x of
+    PList b -> pure $ makeList (a++b)
+    _ -> throwError "Invalid argument to ++"),
   ("apply", primUnop $ onInt' (index a)),
   ("map", unop' $ \fn env -> (,env) <$> makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
   ("filter", unop' $ \fn env -> (,env) <$> makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)

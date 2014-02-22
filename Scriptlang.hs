@@ -3,6 +3,9 @@
 module Main where
 
 {- TODO
+  This should not parse:
+    f- =>2
+    It seems to parse as "get the member "-" on object "f" and apply the result to a zero-argument function that returns 2". Needless to say, this makes no goddamn sense.
   The code for detecting imbalanced groupers doesn't ignore groupers in comments
   Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
 
@@ -27,13 +30,15 @@ module Main where
   Should it be possible to overload assignment?
   Add fields - like Scala's getters and setters?
     They should behave sort of like variables.
-  Functions could have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
   Make sure _ and especially _* work properly with by-name parameters.
   Function overloading
   Line numbers for errors
   Add a method to be called when a method isn't defined
 
   Do by-name optional parameters make sense?
+
+  Notes:
+    I would've liked to add operators like "+" to add 2 functions together, but that wouldn't work with the current language design and would require major changes, if it could be done at all.
 -}
 
 import Data.List
@@ -138,12 +143,12 @@ repl env = do
   case expr_ of
     Left err -> putStrLn err >> repl env
     Right expr -> do
-      {-debug <- runErrorT (debugging env)
+      debug <- runErrorT (debugging env)
       case debug of
         Left err -> putStrLn err >> repl env
         Right debug -> when debug $ do
           print expr
-          putStrLn (prettyPrint expr)-}
+          putStrLn (prettyPrint expr)
 
       res <- runErrorT (replEval expr env)
       case res of
