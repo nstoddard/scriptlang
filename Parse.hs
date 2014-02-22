@@ -39,7 +39,7 @@ tryParseAssign = do
   expr <- parseNonStatement
   let
     parseAssign = do
-      val <- try $ whitespace *> symbol "<-" /> parseExpr
+      val <- try (whitespace *> symbol "<-") /> parseExpr
       case getVar expr of
         Just var -> pure $ EAssign var val
         Nothing -> mzero
@@ -52,7 +52,7 @@ identifier' = do
 
 parseVarDef = EVarDef <$> (keyword "var" /> identifier) </> ((symbol "<-" /> parseExpr) <|> pure EVoid)
 
-statementSeparator = oneOf ";,\n"
+statementSeparator = inWhitespace $ oneOf ";,\n"
 listSeparator = oneOf ";,"
 
 block = between (grouper '{') (grouper '}') parseCompound

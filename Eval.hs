@@ -348,6 +348,12 @@ envLookup' name env = eval' (EId (name,ByVal)) env
 
 
 makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
+  ("to", primUnop $ \x -> case x of
+    PInt b -> pure $ makeList $ map makeInt [a..b]
+    _ -> throwError "Invalid argument to 'to'"),
+  ("until", primUnop $ \x -> case x of
+    PInt b -> pure $ makeList $ map makeInt [a..b-1]
+    _ -> throwError "Invalid argument to 'to'"),
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("+", primUnop $ onNum (a+) (fromInteger a+)),
   ("-", primUnop $ onNum (a-) (fromInteger a-)),

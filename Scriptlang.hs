@@ -4,35 +4,34 @@ module Main where
 
 {- TODO
   The code for detecting imbalanced groupers doesn't ignore groupers in comments
+  Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
 
-  In later versions:
-    "Invalid argument to <implementation detail>" should be changed to something more meaningful
-    Add a way to look up the definition of a function
-    Allow user-defined operator precedence and associativity. the current rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on, otherwise it would be unparseable.
-    Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
-    Always print the path with forward slashes rather than backslashes (since backslashes are for escape characters, you'd need to write "\\" when you could just write "/") - this may require reimplementing things like "pwd" in order to get the slashes right.
-    More I/O
-    Glob syntax and regexes
-    Command history
-    I/O redirection and pipes for external programs
-    Types and pattern matching
-    Generators
-    Syntax for specifying chars with a hex code
-    Extension methods
-    Data declarations
-    Maps - perhaps I should hold off on implementing this until I've implemented pattern matching - it seems that pattern matching and maps could be combined to simplify the language - this is one thing that I find irritating about Scala; it's sometimes hard to decide which one to use
-    Reflection - checking which fields, methods, etc an object supports
-    Imports
-    Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
-    Should it be possible to overload assignment?
-    Add fields - like Scala's getters and setters?
-      They should behave sort of like variables.
-    Functions could have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
-    Make sure _ and especially _* work properly with by-name parameters.
-    Function overloading
-    Line numbers for errors
-    Add a method to be called when a method isn't defined
-    Cloning of objects?
+  "Invalid argument to <implementation detail>" should be changed to something more meaningful
+  Add a way to look up the definition of a function
+  Allow user-defined operator precedence and associativity. the current rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on, otherwise it would be unparseable.
+  Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
+  Always print the path with forward slashes rather than backslashes (since backslashes are for escape characters, you'd need to write "\\" when you could just write "/") - this may require reimplementing things like "pwd" in order to get the slashes right.
+  More I/O
+  Glob syntax and regexes
+  Command history
+  I/O redirection and pipes for external programs
+  Types and pattern matching
+  Generators
+  Syntax for specifying chars with a hex code
+  Extension methods
+  Data declarations
+  Maps - perhaps I should hold off on implementing this until I've implemented pattern matching - it seems that pattern matching and maps could be combined to simplify the language - this is one thing that I find irritating about Scala; it's sometimes hard to decide which one to use
+  Reflection - checking which fields, methods, etc an object supports
+  Imports
+  Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
+  Should it be possible to overload assignment?
+  Add fields - like Scala's getters and setters?
+    They should behave sort of like variables.
+  Functions could have a "+" operator for adding 2 functions together, and so on - perhaps these operators can be automatically generated for every possible operator
+  Make sure _ and especially _* work properly with by-name parameters.
+  Function overloading
+  Line numbers for errors
+  Add a method to be called when a method isn't defined
 
   Do by-name optional parameters make sense?
 -}
