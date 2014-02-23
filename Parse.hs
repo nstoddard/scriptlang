@@ -149,10 +149,13 @@ parseDef = do
     parseFnDef = EDef id ... eFn <$> parseParams </> (symbol "->" /> parseExpr)
   parseValDef <|> parseFnDef
 
-parseFn = eFn <$> parseParams </> (symbol "=>" /> parseExpr)
+parseFn = parseFn' <|> parseNullaryFn
+parseFn' = eFn <$> parseSomeParams </> (symbol "=>" /> parseExpr)
+parseNullaryFn = eFn [] <$> (symbol "=>" /> parseExpr)
 
-parseParams = parseParams' <|> pure [] where
-  parseParams' = ((:) <$> parseOptParam </> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> try parseFlagParam </> parseParams) <|> ((:) <$> parseReqParam </> parseParams)
+parseParams = parseSomeParams <|> pure []
+
+parseSomeParams = ((:) <$> parseOptParam </> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> try parseFlagParam </> parseParams) <|> ((:) <$> parseReqParam </> parseParams) where
   parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
   parseRepParam = RepParam <$> identifier' <* symbol "*"
   parseReqParam = ReqParam <$> identifier'

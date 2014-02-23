@@ -3,37 +3,39 @@
 module Main where
 
 {- TODO
-  This should not parse:
-    f- =>2
-    It seems to parse as "get the member "-" on object "f" and apply the result to a zero-argument function that returns 2". Needless to say, this makes no goddamn sense.
-  The code for detecting imbalanced groupers doesn't ignore groupers in comments
-  Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
+  TODO for first version:
+    The code for detecting imbalanced groupers doesn't ignore groupers in comments
+    Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
 
-  "Invalid argument to <implementation detail>" should be changed to something more meaningful
-  Add a way to look up the definition of a function
-  Allow user-defined operator precedence and associativity. the current rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on, otherwise it would be unparseable.
-  Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
-  Always print the path with forward slashes rather than backslashes (since backslashes are for escape characters, you'd need to write "\\" when you could just write "/") - this may require reimplementing things like "pwd" in order to get the slashes right.
-  More I/O
-  Glob syntax and regexes
-  Command history
-  I/O redirection and pipes for external programs
-  Types and pattern matching
-  Generators
-  Syntax for specifying chars with a hex code
-  Extension methods
-  Data declarations
-  Maps - perhaps I should hold off on implementing this until I've implemented pattern matching - it seems that pattern matching and maps could be combined to simplify the language - this is one thing that I find irritating about Scala; it's sometimes hard to decide which one to use
-  Reflection - checking which fields, methods, etc an object supports
-  Imports
-  Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
-  Should it be possible to overload assignment?
-  Add fields - like Scala's getters and setters?
-    They should behave sort of like variables.
-  Make sure _ and especially _* work properly with by-name parameters.
-  Function overloading
-  Line numbers for errors
-  Add a method to be called when a method isn't defined
+    Generators
+      The syntax should look something like this:
+        read "in.txt" | words | sort | unwords | write "out.txt"
+      I need to fix my types first. I have too many lists and they all have to implement most operators separately.
+        I need at least List and Stream. I might be able to incorporate the string functions into them; I don't want to also have String and CharStream. If it were a more strongly typed language I'd have Stream<Char> and so on. If I include string functions in lists, it just means that they'll fail when applied to a non-string.
+    Imports
+    Glob syntax and regexes
+    Extension methods
+    Function overloading
+    "Invalid argument to <implementation detail>" should be changed to something more meaningful
+    Allow user-defined operator precedence and associativity. the current rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on, otherwise it would be unparseable.
+    Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
+    I/O redirection and pipes for external programs
+    Syntax for specifying chars with a hex code
+    Maps
+    Make sure _ and especially _* work properly with by-name parameters.
+    Add a method to be called when a method isn't defined
+
+  TODO for later versions:
+    Add a way to look up the definition of a function
+    Command history
+    Types and pattern matching
+    Data declarations
+    Reflection - checking which fields, methods, etc an object supports
+    Consider adding by-reference parameters - when passing a variable to it, instead of passing its value it would pass the variable itself
+    Should it be possible to overload assignment?
+    Add fields - like Scala's getters and setters?
+      They should behave sort of like variables.
+    Line numbers for errors
 
   Do by-name optional parameters make sense?
 
