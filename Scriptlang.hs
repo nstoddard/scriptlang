@@ -50,6 +50,7 @@ module Main where
     I would've liked to add operators like "+" to add 2 functions together, but that wouldn't work with the current language design and would require major changes, if it could be done at all.
 -}
 
+import Prelude hiding (catch)
 import Data.List
 import Control.Monad
 import Control.Applicative
@@ -58,7 +59,7 @@ import Control.Monad.Error
 import Data.Maybe
 import Data.Char
 import System.IO.Unsafe
-import System.IO.Error hiding (try)
+import System.IO.Error hiding (try, catch)
 import Control.Exception hiding (try, block)
 import Data.IORef
 import Data.StateVar
@@ -75,12 +76,18 @@ import qualified System.FilePath as P
 import Text.Parsec hiding ((<|>), many, optional, State)
 import Text.Parsec.Expr
 
+import System.Console.Haskeline as H
+
 import Util
 
 import Expr
 import Parse
 import Eval
 
+
+
+--Change this to false before release
+debug = True
 
 startEnv :: IO EnvStack
 startEnv = envStackFromList [
@@ -138,40 +145,45 @@ debugging env = do
     x -> throwError $ "Invalid value for debug: " ++ prettyPrint x
 
 main = do
+  --install_interrupt_handler (pure ())
   env <- startEnv
-  stdlibFile <- pure "stdlib.script"--(P.</>"stdlib.script") <$> getAppUserDataDirectory "scriptlang"
+  stdlibFile <- if debug then pure "stdlib.script"
+    else (P.</>"stdlib.script") <$> getAppUserDataDirectory "scriptlang"
   env <- runErrorT $ envNewScope =<< runFile stdlibFile env
   case env of
     Left err -> putStrLn err
-    Right env -> repl env
+    Right env -> runInputT defaultSettings $ repl env
 
 testParse parser = forever $ do
   input <- replGetInput Nothing
-  case parse (parser <* eof) "test" input of
+  lift $ case parse (parser <* eof) "test" input of
     Left err -> putStrLn $ "Parse error: " ++ show err
     Right expr -> print expr
 
 repl env = do
-  input <- replGetInput Nothing
-  expr_ <- runErrorT (parseInput "" input parseExpr desugar)
+  input <- replGetInput Nothing{-catch (replGetInput Nothing) $ \exception -> case exception of
+    UserInterrupt -> putStrLn "^c\n" >> pure "{}"
+    e -> error $ "Unhandled exception: " ++ show e-}
+
+  expr_ <- lift $ runErrorT (parseInput "" input parseExpr desugar)
   case expr_ of
-    Left err -> putStrLn err >> repl env
+    Left err -> lift (putStrLn err) >> repl env
     Right expr -> do
-      debug <- runErrorT (debugging env)
+      debug <- lift $ runErrorT (debugging env)
       case debug of
-        Left err -> putStrLn err >> repl env
-        Right debug -> when debug $ do
+        Left err -> lift (putStrLn err) >> repl env
+        Right debug -> when debug $ lift $ do
           print expr
           putStrLn (prettyPrint expr)
 
-      res <- runErrorT (replEval expr env)
+      res <- lift $ runErrorT (replEval expr env)
       case res of
-        Left err -> putStrLn err >> repl env
+        Left err -> lift (putStrLn err) >> repl env
         Right (EVoid, env') -> repl env'
         Right (expr', env') -> do
           case expr' of
-            EObj (PrimObj (PString str) _) -> putStrLn str
-            _ -> putStrLn (prettyPrint expr')
+            EObj (PrimObj (PString str) _) -> lift $ putStrLn str
+            _ -> lift $ putStrLn (prettyPrint expr')
           repl env'
 
 parseInput :: String -> String -> Parsec String () a -> (a->a) -> IOThrowsError a
@@ -201,17 +213,16 @@ runString input env = do
     eval expr env
   pure env
 
+ctrlC :: MonadException m => SomeException -> InputT m (Maybe String)
+ctrlC e = pure (Just "{}")
 
 replGetInput cont = do
-  case cont of
-    Just _ -> putStr "... "
-    Nothing -> putStr "script> "
-  flush
-  input_ <- catchJust (guard . isEOFError) (fmap Just getLine) (const $ pure Nothing)
+  let prompt = if isJust cont then "... " else "script> "
+  input_ <- H.catch (getInputLine prompt) $ ctrlC
   input <- case input_ of
-    Nothing -> exitSuccess
+    Nothing -> lift exitSuccess
     Just input -> pure input
-  if null input then exitSuccess {-replGetInput cont-} else do
+  if null input then if debug then lift exitSuccess else replGetInput cont else do
   let
     input' = case cont of
       Just cont -> cont ++ "\n" ++ input
