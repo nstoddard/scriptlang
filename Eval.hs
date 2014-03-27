@@ -56,6 +56,10 @@ evalID' derefVars id notFoundMsg env = fst <$> evalID derefVars id notFoundMsg e
 
 lookupID id = evalID' True (EId (id,ByVal)) "Identifier not found: "
 
+--Similar to rawSystem, but also handles commands like "sbt" and "clear"
+myRawSystem command args = system (intercalate " " $ map parenify (command:args))
+  where parenify str = if any isSpace str then "\"" ++ str ++ "\"" else str
+
 maybeEvalID derefVars (EId (id,accessType)) env = do
   val <- envLookup id env
   case val of
@@ -120,7 +124,7 @@ eval (EFnApp fn args) env = do
     EExec prog firstArgs -> do
       verifyArgs args
       args' <- getExecArgs args env
-      res <- lift $ tryJust (guard . isDoesNotExistError) (rawSystem prog (firstArgs ++ args'))
+      res <- lift $ tryJust (guard . isDoesNotExistError) (myRawSystem prog (firstArgs ++ args'))
       case res of
         Left err -> throwError $ "Identifier or program not found: " ++ prog
         Right res -> pure (EVoid, env)

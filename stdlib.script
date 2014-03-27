@@ -18,8 +18,6 @@ fib n -> {
   a
 }
 
-clear -> execRaw 'clear'
-
 id x -> x
 
 list xs* -> xs

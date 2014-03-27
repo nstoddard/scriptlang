@@ -4,9 +4,6 @@ module Main where
 
 {- TODO
   TODO for first version:
-    Always use system instead of rawSystem - rawSystem doesn't handle things like sbt correctly; system is harder to use correctly, but gives better results
-      This could mean that I don't need to use slash commands anymore.
-
     Add raw strings. Sometimes I need to paste in paths that include backslashes, and I don't want to have to escape them all. They would also be helpful for regexes.
     The code for detecting imbalanced groupers doesn't ignore groupers in comments
     Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
@@ -176,7 +173,7 @@ repl env = do
           print expr
           putStrLn (prettyPrint expr)
 
-      res <- lift $ runErrorT (replEval expr env)
+      res <- handleCtrlC (Left "Interrupted") $ lift $ runErrorT (replEval expr env)
       case res of
         Left err -> lift (putStrLn err) >> repl env
         Right (EVoid, env') -> repl env'
@@ -213,12 +210,15 @@ runString input env = do
     eval expr env
   pure env
 
-ctrlC :: MonadException m => SomeException -> InputT m (Maybe String)
-ctrlC e = pure (Just "{}")
+
+handleCtrlC = H.handle . ctrlC where
+  ctrlC :: a -> AsyncException -> InputT IO a
+  ctrlC def UserInterrupt = pure def
+  ctrlC def e = lift (putStrLn $ "Unknown exception: " ++ show e) >> pure def
 
 replGetInput cont = do
   let prompt = if isJust cont then "... " else "script> "
-  input_ <- H.catch (getInputLine prompt) $ ctrlC
+  input_ <- handleCtrlC (Just "{}") $ getInputLine prompt
   input <- case input_ of
     Nothing -> lift exitSuccess
     Just input -> pure input
