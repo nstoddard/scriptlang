@@ -4,12 +4,19 @@ module Main where
 
 {- TODO
   TODO for first version:
+    Always use system instead of rawSystem - rawSystem doesn't handle things like sbt correctly; system is harder to use correctly, but gives better results
+      This could mean that I don't need to use slash commands anymore.
+
+    Add raw strings. Sometimes I need to paste in paths that include backslashes, and I don't want to have to escape them all. They would also be helpful for regexes.
     The code for detecting imbalanced groupers doesn't ignore groupers in comments
     Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
 
     Generators
       The syntax should look something like this:
         read "in.txt" | words | sort | unwords | write "out.txt"
+      Perhaps they should be a bit more compact:
+        ?"in.txt" | words | sort | unwords | !"out.txt"
+      With "?" meaning input, and "!" meaning output.
       I need to fix my types first. I have too many lists and they all have to implement most operators separately.
         I need at least List and Stream. I might be able to incorporate the string functions into them; I don't want to also have String and CharStream. If it were a more strongly typed language I'd have Stream<Char> and so on. If I include string functions in lists, it just means that they'll fail when applied to a non-string.
     Imports
@@ -107,12 +114,17 @@ startEnv = envStackFromList [
     PrimObj (PString str) _ -> (,env) <$> fst <$> parseEval str env
     x -> throwError $ "Can't evaluate non-string: " ++ prettyPrint x),
   ("cd", stringUnop $ \str -> do
-    lift $ setCurrentDirectory str
-    makeString <$> lift getCurrentDirectory),
-  ("wd", nilop $ makeString . replace '\\' '/' <$> lift getCurrentDirectory),
+    exists <- lift $ doesDirectoryExist str
+    if exists then do
+      lift $ setCurrentDirectory str
+      makeString <$> lift workingDirectory
+    else throwError $ "Directory doesn't exist: " ++ str),
+  ("wd", nilop $ makeString <$> lift workingDirectory),
   ("run", stringUnop' $ \file env -> do
     (EVoid,) <$> runFile file env)
   ]
+
+workingDirectory = replace '\\' '/' <$> getCurrentDirectory
 
 parseEval str env = do
   expr <- parseInput "" str parseExpr desugar
@@ -127,7 +139,7 @@ debugging env = do
 
 main = do
   env <- startEnv
-  stdlibFile <- (P.</>"stdlib.script") <$> getAppUserDataDirectory "scriptlang"
+  stdlibFile <- pure "stdlib.script"--(P.</>"stdlib.script") <$> getAppUserDataDirectory "scriptlang"
   env <- runErrorT $ envNewScope =<< runFile stdlibFile env
   case env of
     Left err -> putStrLn err
