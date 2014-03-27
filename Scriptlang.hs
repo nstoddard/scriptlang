@@ -14,8 +14,6 @@ module Main where
       Perhaps they should be a bit more compact:
         ?"in.txt" | words | sort | unwords | !"out.txt"
       With "?" meaning input, and "!" meaning output.
-      I need to fix my types first. I have too many lists and they all have to implement most operators separately.
-        I need at least List and Stream. I might be able to incorporate the string functions into them; I don't want to also have String and CharStream. If it were a more strongly typed language I'd have Stream<Char> and so on. If I include string functions in lists, it just means that they'll fail when applied to a non-string.
     Imports
     Glob syntax and regexes
     Extension methods
@@ -26,12 +24,12 @@ module Main where
     I/O redirection and pipes for external programs
     Syntax for specifying chars with a hex code
     Maps
-    Make sure _ and especially _* work properly with by-name parameters.
     Add a method to be called when a method isn't defined
+    Read/write command history from config file
 
   TODO for later versions:
+    Make sure _ and especially _* work properly with by-name parameters.
     Add a way to look up the definition of a function
-    Command history
     Types and pattern matching
     Data declarations
     Reflection - checking which fields, methods, etc an object supports
@@ -94,29 +92,29 @@ startEnv = envStackFromList [
   ("help", makeString "TODO: write documentation"),
   ("execRaw", ePrim [reqParam "proc"] $ \env -> do
     proc <- envLookup' "proc" env
-    case proc of
-      (EObj (PrimObj (PString proc) _)) -> do
+    case getString' proc of
+      Just proc -> do
         lift $ system proc
         pure (EVoid, env)
-      _ -> throwError "Invalid argument to execRaw"),
+      Nothing -> throwError "Invalid argument to execRaw"),
   ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure (EVoid,env)), --TODO: THIS DOESN'T WORK
   ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid),
   ("print", objUnop' $ \obj env -> do
     expr <- call obj "toString" [] env
-    case expr of
-      EObj (PrimObj (PString str) _) -> lift $ putStr str
-      x -> throwError $ "toString must return a string; not " ++ prettyPrint x
+    case getString' expr of
+      Just str -> lift $ putStr str
+      Nothing -> throwError $ "toString must return a string; not " ++ prettyPrint expr
     pure (EVoid,env)),
   ("println", objUnop' $ \obj env -> do
     expr <- call obj "toString" [] env
-    case expr of
-      EObj (PrimObj (PString str) _) -> lift $ putStrLn str
-      x -> throwError $ "toString must return a string; not " ++ prettyPrint x
+    case getString' expr of
+      Just str -> lift $ putStrLn str
+      Nothing -> throwError $ "toString must return a string; not " ++ prettyPrint expr
     pure (EVoid,env)),
   ("readln", nilop $ makeString <$> lift getLine),
-  ("eval", objUnop' $ \obj env -> case obj of
-    PrimObj (PString str) _ -> (,env) <$> fst <$> parseEval str env
-    x -> throwError $ "Can't evaluate non-string: " ++ prettyPrint x),
+  ("eval", objUnop' $ \obj env -> case getString2' obj of
+    Just str -> (,env) <$> fst <$> parseEval str env
+    Nothing -> throwError $ "Can't evaluate non-string: " ++ prettyPrint obj),
   ("cd", stringUnop $ \str -> do
     exists <- lift $ doesDirectoryExist str
     if exists then do
@@ -142,7 +140,6 @@ debugging env = do
     x -> throwError $ "Invalid value for debug: " ++ prettyPrint x
 
 main = do
-  --install_interrupt_handler (pure ())
   env <- startEnv
   stdlibFile <- if debug then pure "stdlib.script"
     else (P.</>"stdlib.script") <$> getAppUserDataDirectory "scriptlang"
@@ -158,10 +155,7 @@ testParse parser = forever $ do
     Right expr -> print expr
 
 repl env = do
-  input <- replGetInput Nothing{-catch (replGetInput Nothing) $ \exception -> case exception of
-    UserInterrupt -> putStrLn "^c\n" >> pure "{}"
-    e -> error $ "Unhandled exception: " ++ show e-}
-
+  input <- replGetInput Nothing
   expr_ <- lift $ runErrorT (parseInput "" input parseExpr desugar)
   case expr_ of
     Left err -> lift (putStrLn err) >> repl env
@@ -178,9 +172,9 @@ repl env = do
         Left err -> lift (putStrLn err) >> repl env
         Right (EVoid, env') -> repl env'
         Right (expr', env') -> do
-          case expr' of
-            EObj (PrimObj (PString str) _) -> lift $ putStrLn str
-            _ -> lift $ putStrLn (prettyPrint expr')
+          case getString' expr' of
+            Just str -> lift $ putStrLn str
+            Nothing -> lift $ putStrLn (prettyPrint expr')
           repl env'
 
 parseInput :: String -> String -> Parsec String () a -> (a->a) -> IOThrowsError a

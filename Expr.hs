@@ -100,7 +100,7 @@ envRemoveIORefs (EnvStack xs) = mapM get xs
 
 --- Expressions ---
 
-data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PString String | PList [Expr] | PTuple [Expr] deriving Show
+data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] | PTuple [Expr] deriving Show
 
 data Expr =
   EVoid |
@@ -218,9 +218,28 @@ instance Pretty PrimData where
   pretty (PBool True) = pretty "true"
   pretty (PBool False) = pretty "false"
   pretty (PChar x) = pretty '#' <//> pretty x
-  pretty (PString x) = pretty '"' <//> pretty x <//> pretty '"'
-  pretty (PList xs) = prettyList xs
+  pretty (PList xs) = case getString3' xs of
+    Just str -> pretty '"' <//> pretty str <//> pretty '"'
+    Nothing -> prettyList xs
   pretty (PTuple xs) = prettyTuple xs
+
+
+getList (EObj (PrimObj (PList xs) _)) = pure xs
+getList x = throwError $ "Not a list: " ++ prettyPrint x
+
+getChar' (EObj (PrimObj (PChar c) _)) = Just c
+getChar' _ = Nothing
+
+getString' (EObj (PrimObj (PList xs) _)) = let chars = catMaybes $ map getChar' xs in
+  if length chars == length xs then Just chars else Nothing
+getString' _ = Nothing
+
+getString2' (PrimObj (PList xs) _) = let chars = catMaybes $ map getChar' xs in
+  if length chars == length xs then Just chars else Nothing
+getString2' _ = Nothing
+
+getString3' xs = let chars = catMaybes $ map getChar' xs in
+  if length chars == length xs then Just chars else Nothing
 
 
 

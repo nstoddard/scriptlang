@@ -221,14 +221,15 @@ evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 eval' expr env = fst <$> eval expr env
 replEval' expr env = fst <$> replEval expr env
 
-getStr expr env = do
-  case expr of
+getStr expr env = case getString' expr of
+  Just str -> pure [str]
+  Nothing -> case expr of
     EObj (PrimObj (PList xs) _) -> concatMapM (`getStr` env) xs
     EObj obj -> do
       res <- call obj "toString" [] env
-      case res of
-        EObj (PrimObj (PString str) _) -> pure [str]
-        x -> throwError $ "Invalid result from toString: " ++ prettyPrint x
+      case getString' res of
+        Just str -> pure [str]
+        Nothing -> throwError $ "Invalid result from toString: " ++ prettyPrint res
     x -> throwError $ "Invalid argument to program: " ++ prettyPrint x
 
 evalToStr expr env = (`getStr` env) =<< eval' expr env
@@ -452,14 +453,12 @@ makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
   ("&&", primUnop $ onBool (a&&)),
   ("||", primUnop $ onBool (a||))
   ]
-makeString a = EObj $ PrimObj (PString a) $ envFromList [
-  ("toString", nilop $ pure (makeString a)),
-  ("empty", nilop $ pure (makeBool $ null a)),
-  ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
-  ("apply", primUnop $ onInt' (\i -> makeChar <$> index a i))
-  ]
+makeString = makeList . map makeChar
+
 makeList a = EObj $ PrimObj (PList a) $ envFromList [
-  ("toString", nilop $ pure (makeString $ prettyPrint a)),
+  ("toString", nilop $ case getString3' a of
+    Just str -> pure (makeString str)
+    Nothing -> pure (makeString $ prettyPrint a)),
   ("head", nilop $ if null a then throwError "Can't take the head of an empty list" else pure (head a)),
   ("tail", nilop $ if null a then throwError "Can't take the tail of an empty list" else pure (makeList $ tail a)),
   ("init", nilop $ if null a then throwError "Can't take the init of an empty list" else pure (makeList $ init a)),
@@ -480,9 +479,6 @@ makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("apply", primUnop $ onInt' (index a))
   ]
-
-getList (EObj (PrimObj (PList xs) _)) = pure xs
-getList x = throwError $ "Not a list: " ++ prettyPrint x
 
 --These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
 makeList' xs = EFnApp makeListPrim (map Arg xs)
@@ -637,14 +633,14 @@ objUnop' f = prim' ["x"] $ \args env -> case args!"x" of
   x -> throwError $ "Invalid argument to objUnop': " ++ prettyPrint x
 
 stringUnop :: (String -> IOThrowsError Expr) -> Expr
-stringUnop f = objUnop $ \obj -> case obj of
-  PrimObj (PString str) _ -> f str
-  x -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint x
+stringUnop f = objUnop $ \obj -> case getString2' obj of
+  Just str -> f str
+  Nothing -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint obj
 
 stringUnop' :: (String -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
-stringUnop' f = objUnop' $ \obj env -> case obj of
-  PrimObj (PString str) _ -> f str env
-  x -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint x
+stringUnop' f = objUnop' $ \obj env -> case getString2' obj of
+  Just str -> f str env
+  Nothing -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint obj
 
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
