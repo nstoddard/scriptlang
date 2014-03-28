@@ -236,8 +236,6 @@ keyword str = assert (str `elem` keywords) $ tryString str <* notFollowedBy (sat
 symbol str = assert (str `elem` builtinOps) $ tryString str <* notFollowedBy (satisfy $ (`elem` opChars))
 grouper c = assert (c `elem` groupChars) $ char c
 
---TODO: I removed ` because it's currently the syntax used to pass flags to foreign programs. When I improve the parser to be whitespace-sensitive, I can re-add it.
---TODO: can I actually re-add it? It's still used for backquoted identifiers.
 opChars = "/<>?:\\|~!@#$%^&*+-="
 --These are operators that can't be redefined because they're used in the language syntax
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", "//", "/*", "*/"]

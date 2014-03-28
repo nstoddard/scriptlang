@@ -1,0 +1,36 @@
+exit
+simpleGen.cur
+simpleGen.moveNext
+simpleGen.cur
+simpleGen.moveNext
+simpleGen.cur
+simpleGen.moveNext
+simpleGen = withGen {yield => {yield 5; yield 10}}
+simpleGen.moveNext
+simpleGen.cur
+simpleGen.moveNext
+simpleGen.cur
+simpleGen.moveNext
+simpleGen.cur
+simpleGen = withGen {yield => {yield 5; yield 10}}
+simpleGen = withGen {yield => {yield 5; yield 10}}
+{yield => {yield 5; yield 10}} 5
+{yield => {yield 5; yield 10}}
+{yield => yield 5; yield 10}
+simpleGen = withGen {yield => yield 5; yield 10}
+ntaynfytf
+exit
+ntfyntyf
+exit
+exit
+naytfnafyunt
+yield
+simpleGen = withGen {yield => yield 5; yield 10}
+exit
+6 `div` 2 `div` 3
+6 `div` 2
+6 div 2 | div 3
+6 div 2 div 3
+exit
+exit
+ls

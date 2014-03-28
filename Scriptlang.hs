@@ -4,16 +4,33 @@ module Main where
 
 {- TODO
   TODO for first version:
+    Should I use void instead of {} to represent a non-empty expression that doesn't quit the repl?
     Add raw strings. Sometimes I need to paste in paths that include backslashes, and I don't want to have to escape them all. They would also be helpful for regexes.
     The code for detecting imbalanced groupers doesn't ignore groupers in comments
     Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
 
+    Add syntax like "3 `div` 2" to replace the stupid syntax "3 div 2". Then we can do things like "6 `div` 2 `div` 3" where before we had to do "6 div 2 | div 3" which is really dumb. This also lets us use pipes exclusively for chaining together generators and consumers. Unfortunately, backquoted identifiers currently allow you to include arbitrary characters in identifiers, and even use keywords as identifiers. That's a stupid idea that I got from Scala. I should get rid of it. Nobody would ever use it. I hope not, anyway. It's in Scala because it needs to interop with Java, and Scala has some keywords that Java doesn't have. If in Java, you have a variable named "val", to access it from Scala you need backquotes around it. I don't have that problem here.
     Generators
       The syntax should look something like this:
         read "in.txt" | words | sort | unwords | write "out.txt"
       Perhaps they should be a bit more compact:
         ?"in.txt" | words | sort | unwords | !"out.txt"
       With "?" meaning input, and "!" meaning output.
+      read filename -> withGen {yield => withFile filename {file =>
+        while (!file.atEnd)
+          yield file.readChar
+      }}
+      write filename gen -> withFile filename {file =>
+        while (gen.moveNext)
+          file.writeChar gen.cur
+      }
+      dupEvery gen -> withGen {yield =>
+        while (gen.moveNext) {
+          yield gen.cur
+          yield gen.cur
+        }
+      }
+      read "in" | dupEvery | write "out" = write "out" (dupEvery (read "in"))
     Imports
     Glob syntax and regexes
     Extension methods
@@ -71,6 +88,8 @@ import Text.Parsec hiding ((<|>), many, optional, State)
 import Text.Parsec.Expr
 
 import System.Console.Haskeline as H
+import Control.Concurrent hiding (writeChan)
+import Control.Concurrent.BoundedChan
 
 import Util
 
@@ -122,7 +141,23 @@ startEnv = envStackFromList [
     else throwError $ "Directory doesn't exist: " ++ str),
   ("wd", nilop $ makeString <$> lift workingDirectory),
   ("run", stringUnop' $ \file env -> do
-    (EVoid,) <$> runFile file env)
+    (EVoid,) <$> runFile file env),
+  ("withGen", unop' $ \arg env -> case arg of
+    EObj fn@(FnObj {}) -> do
+      gen@(EObj (PrimObj (PGen ioRef chan) _)) <- makeGen 10
+      lift $ forkIO $ do
+        let
+          yield = unop $ \x -> do
+            lift $ writeChan chan (Just x)
+            pure EVoid
+        res <- runErrorT $ do
+          apply arg [Arg yield] env
+          lift $ writeChan chan Nothing
+        case res of
+          Left err -> putStrLn $ "Error in generator: " ++ err
+          Right val -> pure ()
+      pure (gen,env)
+    _ -> throwError $ "Invalid argument to withGen: " ++ prettyPrint arg)
   ]
 
 workingDirectory = replace '\\' '/' <$> getCurrentDirectory

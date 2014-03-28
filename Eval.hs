@@ -24,6 +24,7 @@ import qualified System.IO.Strict as Strict
 import Data.Foldable (asum, toList)
 import Debug.Trace
 import System.Process
+import Control.Concurrent.BoundedChan
 
 import Util
 
@@ -57,8 +58,9 @@ evalID' derefVars id notFoundMsg env = fst <$> evalID derefVars id notFoundMsg e
 lookupID id = evalID' True (EId (id,ByVal)) "Identifier not found: "
 
 --Similar to rawSystem, but also handles commands like "sbt" and "clear"
-myRawSystem command args = system (intercalate " " $ map parenify (command:args))
-  where parenify str = if any isSpace str then "\"" ++ str ++ "\"" else str
+--myRawSystem command args = system (intercalate " " $ map parenify (command:args))
+--  where parenify str = if any isSpace str then "\"" ++ str ++ "\"" else str
+myRawSystem = rawSystem
 
 maybeEvalID derefVars (EId (id,accessType)) env = do
   val <- envLookup id env
@@ -479,6 +481,22 @@ makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("apply", primUnop $ onInt' (index a))
   ]
+makeGen cap = do
+  ioRef <- lift $ newIORef Nothing
+  chan <- lift $ newBoundedChan cap
+  pure $ EObj $ PrimObj (PGen ioRef chan) $ envFromList [
+    ("cur", nilop $ do
+      val <- lift $ readIORef ioRef
+      case val of
+        Just val -> pure val
+        Nothing -> throwError "Generator has no current value"),
+    ("moveNext", nilop $ do
+      val <- lift $ readChan chan
+      lift $ writeIORef ioRef val
+      case val of
+        Just val -> pure (makeBool True)
+        Nothing -> pure (makeBool False))
+    ]
 
 --These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
 makeList' xs = EFnApp makeListPrim (map Arg xs)

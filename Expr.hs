@@ -22,6 +22,7 @@ import qualified System.IO.Strict as Strict
 import Data.Foldable (asum, toList)
 import Debug.Trace
 import System.Process
+import Control.Concurrent.BoundedChan
 
 import qualified Text.PrettyPrint.Leijen as P
 import Text.PrettyPrint.Leijen ((<//>), (</>), Pretty, pretty, displayS, renderPretty)
@@ -100,7 +101,8 @@ envRemoveIORefs (EnvStack xs) = mapM get xs
 
 --- Expressions ---
 
-data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] | PTuple [Expr] deriving Show
+data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] | PTuple [Expr] | PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr))
+
 
 data Expr =
   EVoid |
@@ -212,6 +214,15 @@ instance Pretty Fn where
   pretty (Fn body) = pretty body
   pretty (Closure body env) = pretty body
 
+instance Show PrimData where
+  show (PInt x) = show x
+  show (PFloat x) = show x
+  show (PBool x) = show x
+  show (PChar x) = show x
+  show (PList xs) = show xs
+  show (PTuple xs) = "Tuple: " ++ show xs
+  show (PGen {}) = show "<gen>"
+
 instance Pretty PrimData where
   pretty (PInt x) = pretty x
   pretty (PFloat x) = pretty x
@@ -222,6 +233,7 @@ instance Pretty PrimData where
     Just str -> pretty '"' <//> pretty str <//> pretty '"'
     Nothing -> prettyList xs
   pretty (PTuple xs) = prettyTuple xs
+  pretty (PGen {}) = pretty "<generator>"
 
 
 getList (EObj (PrimObj (PList xs) _)) = pure xs
