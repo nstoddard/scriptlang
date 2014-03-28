@@ -1,3 +1,51 @@
+echo wd
+println wd
+(simpleGen.cur) 5
+simpleGen.cur 5
+simpleGen.cur
+simpleGen.cur + 2
+while (simpleGen.moveNext) {println simpleGen.cur}
+simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
+println (b.c)
+println b.c
+print b.c
+b = new {c = 5}
+a (b.c)
+a b.c
+while (simpleGen.moveNext) {println (simpleGen.cur)}
+while (simpleGen.moveNext) {println simpleGen.cur}
+simpleGen.moveNext
+while (simpleGen.moveNext) {println simpleGen.cur}
+while (simpleGen.moveNext) {println (simpleGen.cur)}
+simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
+exit
+while (simpleGen.moveNext) {println (simpleGen.cur)}
+while (simpleGen.moveNext) {println simpleGen.cur}
+simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
+while (simpleGen.moveNext) {println (simpleGen.cur)}
+while (simpleGen.moveNext) {println simpleGen.cur}
+while (simpleGen.moveNext) {println (simpleGen.cur)}
+while (simpleGen.moveNext) {println simpleGen.cur}
+simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
+exit
+dupEvery 5
+dupEvery gen -> withGen {yield => while (gen.moveNext) {yield gen.cur; yield gen.cur}}
+gen.moveNext
+gen.cur
+gen.moveNext
+gen.cur
+gen.moveNext
+gen.cur
+gen.moveNext
+gen.cur
+gen.moveNext
+gen = dupEvery simpleGen
+dupEvery gen -> withGen {yield => while (gen.moveNext) {yield gen.cur; yield gen.cur}}
+simpleGen = withGen {yield => {yield 5; yield 10}}
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+eeeeeeee
+eeeeeeee
+void
 exit
 simpleGen.cur
 simpleGen.moveNext

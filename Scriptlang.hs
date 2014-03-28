@@ -4,7 +4,17 @@ module Main where
 
 {- TODO
   TODO for first version:
-    Should I use void instead of {} to represent a non-empty expression that doesn't quit the repl?
+    Why doesn't this:
+      a b.c
+    Parse the same as:
+      a (b.c)
+    Sometimes the second one works but the first doesn't (but sometimes they both work)
+    It seems that this doesn't work for simpleGen.cur because that's a zero-argument function. The way to resolve this might be to make it into a new type of value, which is evaluated sooner than a zero-argument function but that isn't constant.
+    Would by-name values fix this problem? I already have them implemented and they might have the required semantics. I've been trying to avoid them, though; they're a bit confusing so they should be avoided whenever possible. But they might work for this case.
+    Another case for them is in "wd", which would let me replace "println (wd)" with "println wd"
+    I'll avoid fixing this for now; I need to simplify the evaluator first. Otherwise it'll get way too big to manage.
+
+    Allow interrupting generators
     Add raw strings. Sometimes I need to paste in paths that include backslashes, and I don't want to have to escape them all. They would also be helpful for regexes.
     The code for detecting imbalanced groupers doesn't ignore groupers in comments
     Sometimes parse errors give a line way before the actual error, probably caused by excessive "try" statements
@@ -166,12 +176,12 @@ parseEval str env = do
   expr <- parseInput "" str parseExpr desugar
   eval expr env
 
-debugging env = do
+{-debugging env = do
   debug <- lookupID "debug" env
   case debug of
     EObj (PrimObj (PBool True) _) -> pure True
     EObj (PrimObj (PBool False) _) -> pure False
-    x -> throwError $ "Invalid value for debug: " ++ prettyPrint x
+    x -> throwError $ "Invalid value for debug: " ++ prettyPrint x-}
 
 
 dataFile filename = if debug then pure filename
@@ -201,12 +211,15 @@ repl env = do
   case expr_ of
     Left err -> lift (putStrLn err) >> repl env
     Right expr -> do
-      debug <- lift $ runErrorT (debugging env)
+      {-debug <- lift $ runErrorT (debugging env)
       case debug of
         Left err -> lift (putStrLn err) >> repl env
         Right debug -> when debug $ lift $ do
           print expr
-          putStrLn (prettyPrint expr)
+          putStrLn (prettyPrint expr)-}
+      when debug $ lift $ do
+        print expr
+        putStrLn (prettyPrint expr)
 
       res <- handleCtrlC (Left "Interrupted") $ lift $ runErrorT (replEval expr env)
       case res of
@@ -229,10 +242,10 @@ runFile filename env = do
   if not exists then throwError ("File doesn't exist: " ++ filename) else do
   input <- lift $ Strict.readFile filename
   exprs <- parseInput filename input parseCompound (map desugar)
-  --lift $ putStrLn $ "Running file: " ++ filename
+  when debug $ lift $ putStrLn $ "Running file: " ++ filename
   forM_ exprs $ \expr -> do
-    --lift $ print expr
-    --lift $ putStrLn (prettyPrint expr)
+    when debug $ lift $ print expr
+    when debug $ lift $ putStrLn (prettyPrint expr)
     eval expr env
   pure env
 
@@ -240,8 +253,8 @@ runString :: String -> EnvStack -> IOThrowsError EnvStack
 runString input env = do
   exprs <- parseInput "" input parseCompound (map desugar)
   forM_ exprs $ \expr -> do
-    --lift $ print expr
-    --lift $ putStrLn (prettyPrint expr)
+    when debug $ lift $ print expr
+    when debug $ lift $ putStrLn (prettyPrint expr)
     eval expr env
   pure env
 
@@ -253,7 +266,7 @@ handleCtrlC = H.handle . ctrlC where
 
 replGetInput cont = do
   let prompt = if isJust cont then "... " else "script> "
-  input_ <- handleCtrlC (Just "{}") $ getInputLine prompt
+  input_ <- handleCtrlC (Just "void") $ getInputLine prompt
   input <- case input_ of
     Nothing -> lift exitSuccess
     Just input -> pure input

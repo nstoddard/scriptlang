@@ -484,6 +484,7 @@ makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
 makeGen cap = do
   ioRef <- lift $ newIORef Nothing
   chan <- lift $ newBoundedChan cap
+  done <- lift $ newIORef False
   pure $ EObj $ PrimObj (PGen ioRef chan) $ envFromList [
     ("cur", nilop $ do
       val <- lift $ readIORef ioRef
@@ -491,11 +492,13 @@ makeGen cap = do
         Just val -> pure val
         Nothing -> throwError "Generator has no current value"),
     ("moveNext", nilop $ do
+      done' <- lift $ readIORef done
+      if done' then pure (makeBool False) else do
       val <- lift $ readChan chan
       lift $ writeIORef ioRef val
-      case val of
-        Just val -> pure (makeBool True)
-        Nothing -> pure (makeBool False))
+      let gotOne = isJust val
+      lift $ writeIORef done gotOne
+      pure (makeBool gotOne))
     ]
 
 --These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
