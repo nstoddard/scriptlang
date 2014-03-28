@@ -25,7 +25,6 @@ module Main where
     Syntax for specifying chars with a hex code
     Maps
     Add a method to be called when a method isn't defined
-    Read/write command history from config file
 
   TODO for later versions:
     Make sure _ and especially _* work properly with by-name parameters.
@@ -139,14 +138,21 @@ debugging env = do
     EObj (PrimObj (PBool False) _) -> pure False
     x -> throwError $ "Invalid value for debug: " ++ prettyPrint x
 
+
+dataFile filename = if debug then pure filename
+  else (P.</> filename) <$> getAppUserDataDirectory "scriptlang"
+
+stdlibFilename = dataFile "stdlib.script"
+historyFilename = dataFile "history"
+
 main = do
   env <- startEnv
-  stdlibFile <- if debug then pure "stdlib.script"
-    else (P.</>"stdlib.script") <$> getAppUserDataDirectory "scriptlang"
+  stdlibFile <- stdlibFilename
   env <- runErrorT $ envNewScope =<< runFile stdlibFile env
+  historyFile <- historyFilename
   case env of
     Left err -> putStrLn err
-    Right env -> runInputT defaultSettings $ repl env
+    Right env -> runInputT (defaultSettings {historyFile=Just historyFile}) $ repl env
 
 testParse parser = forever $ do
   input <- replGetInput Nothing
