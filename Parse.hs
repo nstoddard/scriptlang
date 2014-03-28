@@ -77,9 +77,9 @@ parseOtherExpr = asum [EBlock <$> block, parseTuple, parseList, parseFloat, pars
 
 parsePipes = do
   start <- parseNonPipeExpr
-  xs <- chainl ((:[]) <$> ((,) <$> try (whitespace *> symbol "|" /> identifier) </> parseArgs)) (pure (++)) []
+  xs <- chainl ((:[]) <$> ((,) <$> try (whitespace *> symbol "|" /> (EId <$> identifier')) </> parseArgs)) (pure (++)) []
   let
-    f obj (id,args) = EFnApp (EMemberAccess obj id) args
+    f obj (id,args) = EFnApp id (args++[Arg obj])  --EFnApp (EMemberAccess obj id) args
   pure $ foldl f start xs
 
 parseList = makeList' <$> (grouper '[' *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ']')

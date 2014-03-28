@@ -9,6 +9,7 @@ import Control.Arrow hiding ((<+>))
 import Control.Monad.Error
 import Data.Maybe
 import Data.Char
+import System.IO
 import System.IO.Unsafe
 import System.IO.Error hiding (try)
 import Control.Exception hiding (try, block)
@@ -101,7 +102,8 @@ envRemoveIORefs (EnvStack xs) = mapM get xs
 
 --- Expressions ---
 
-data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] | PTuple [Expr] | PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr))
+data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] | PTuple [Expr] |
+  PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr)) | PHandle Handle String
 
 
 data Expr =
@@ -189,7 +191,7 @@ instance Pretty Arg where
 instance Pretty Expr where
   pretty EVoid = pretty "void"
   pretty (EId (id,accessType)) = pretty accessType <//> pretty id
-  pretty (EFnApp f []) = pretty f
+  pretty (EFnApp f []) = pretty "(" <//> pretty f <//> pretty ")"
   pretty (EFnApp f args) = pretty "(" <//> pretty f </> hsep (map pretty args) <//> pretty ")"
   pretty (EMemberAccess obj id) = if isOperator id
     then pretty obj </> pretty id
@@ -222,6 +224,7 @@ instance Show PrimData where
   show (PList xs) = show xs
   show (PTuple xs) = "Tuple: " ++ show xs
   show (PGen {}) = show "<gen>"
+  show (PHandle handle file) = show "<handle to " ++ file ++ ">"
 
 instance Pretty PrimData where
   pretty (PInt x) = pretty x
@@ -234,6 +237,7 @@ instance Pretty PrimData where
     Nothing -> prettyList xs
   pretty (PTuple xs) = prettyTuple xs
   pretty (PGen {}) = pretty "<generator>"
+  pretty (PHandle handle file) = pretty "<handle to" </> pretty file <//> pretty ">"
 
 
 getList (EObj (PrimObj (PList xs) _)) = pure xs

@@ -1,84 +1,100 @@
+gen = fileGen "tesT"
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+pwd
+ls
+echo
+/echo wd
+echo (wd)
+/echo wd
 echo wd
-println wd
-(simpleGen.cur) 5
-simpleGen.cur 5
-simpleGen.cur
-simpleGen.cur + 2
-while (simpleGen.moveNext) {println simpleGen.cur}
-simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
-println (b.c)
-println b.c
-print b.c
-b = new {c = 5}
+print wd
+while (testGen.moveNext) (print (testGen.cur))
+testGen = fileGen "test"
+while (testGen.moveNext) (println (testGen.cur))
+testGen = fileGen "test"
+fileGen file -> withGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen = fileGen "test"
+fileGen file -> withGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+testGen.moveNext
+testGen = fileGen "test"
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.next
+testGen.cur
+testGen = withGen (yield => {yield 5; yield 10; yield 15})
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.cur
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen = withGen (yield => {yield 5; yield 10; yield 15})
+testGen = fileGen "test"
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen.moveNext
+testGen.cur
+testGen = fileGen "test"
+testGen = fileGen "tesT"
+fileGen file -> withGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+makeGen
+withFile 'test' 'r' (file => {println (file.readChar); println (file.readChar); println (file.readChar)})
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+withFile 'test' 'r' (file => {println (file.readChar); println (file.readChar); println (file.readChar)})
 a (b.c)
 a b.c
-while (simpleGen.moveNext) {println (simpleGen.cur)}
-while (simpleGen.moveNext) {println simpleGen.cur}
-simpleGen.moveNext
-while (simpleGen.moveNext) {println simpleGen.cur}
-while (simpleGen.moveNext) {println (simpleGen.cur)}
-simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
-exit
-while (simpleGen.moveNext) {println (simpleGen.cur)}
-while (simpleGen.moveNext) {println simpleGen.cur}
-simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
-while (simpleGen.moveNext) {println (simpleGen.cur)}
-while (simpleGen.moveNext) {println simpleGen.cur}
-while (simpleGen.moveNext) {println (simpleGen.cur)}
-while (simpleGen.moveNext) {println simpleGen.cur}
-simpleGen = withGen {yield => {yield 5; yield 10; yield 20}}
-exit
-dupEvery 5
-dupEvery gen -> withGen {yield => while (gen.moveNext) {yield gen.cur; yield gen.cur}}
-gen.moveNext
-gen.cur
-gen.moveNext
-gen.cur
-gen.moveNext
-gen.cur
-gen.moveNext
-gen.cur
-gen.moveNext
-gen = dupEvery simpleGen
-dupEvery gen -> withGen {yield => while (gen.moveNext) {yield gen.cur; yield gen.cur}}
-simpleGen = withGen {yield => {yield 5; yield 10}}
-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
-eeeeeeee
-eeeeeeee
-void
-exit
-simpleGen.cur
-simpleGen.moveNext
-simpleGen.cur
-simpleGen.moveNext
-simpleGen.cur
-simpleGen.moveNext
-simpleGen = withGen {yield => {yield 5; yield 10}}
-simpleGen.moveNext
-simpleGen.cur
-simpleGen.moveNext
-simpleGen.cur
-simpleGen.moveNext
-simpleGen.cur
-simpleGen = withGen {yield => {yield 5; yield 10}}
-simpleGen = withGen {yield => {yield 5; yield 10}}
-{yield => {yield 5; yield 10}} 5
-{yield => {yield 5; yield 10}}
-{yield => yield 5; yield 10}
-simpleGen = withGen {yield => yield 5; yield 10}
-ntaynfytf
-exit
-ntfyntyf
-exit
-exit
-naytfnafyunt
-yield
-simpleGen = withGen {yield => yield 5; yield 10}
-exit
-6 `div` 2 `div` 3
-6 `div` 2
-6 div 2 | div 3
-6 div 2 div 3
-exit
-exit
-ls
+a (b.c)
+a b.c
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+withFile 'test' 'r' (file => {println (file.readChar); println (file.readChar); println (file.readChar)})
+withFile 'test' 'r' (file => {println (file.readChar); println (file.readChar); println file.readChar})
+withFile 'test' 'r' (file => {println (file.readChar); println (file.readChar)})
+withFile 'test' 'r' (file => {println (file.readChar); println (file.readChar}))
+withFile 'test' 'r' (file => println (file.readChar); println (file.readChar))
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+testGen = fileGen "test"
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+testGen = fileGen "test"
+testGen.cur
+fileGen.cur
+testGen = fileGen "test"
+fileGen file -> makeGen (yield => withFile file "r" (file => while (!file.atEOF) {yield (file.readChar)}))
+withFile 'test' 'r' (file => println (file.readChar))
+withFile 'test' 'r' (file => println (file.readChar))
+withFile 'test' 'r' (file => file.readChar)
+5.div (2.div 3)
+5.div 2.(div 3)
+5.div 2.div 3
+(5.div 2).div 3
+5.div 2
+5.div 2 | div 3
+5.div 2 | div 3

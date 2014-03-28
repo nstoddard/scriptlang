@@ -4,6 +4,14 @@ module Main where
 
 {- TODO
   TODO for first version:
+    When you create a generator function with a typo:
+      fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+    And try to use it:
+      testGen = fileGen "test"
+    It gives a nonsensical error message; it should tell you that makeGen is not found
+
+    Why did I use {} rather than () for the generator examples below?
+    Catch divide-by-zero errors, and every other error, and don't terminate the app
     Why doesn't this:
       a b.c
     Parse the same as:
@@ -93,6 +101,7 @@ import Data.Foldable (asum, toList)
 import Debug.Trace
 import System.Process
 import qualified System.FilePath as P
+import System.IO
 
 import Text.Parsec hiding ((<|>), many, optional, State)
 import Text.Parsec.Expr
@@ -110,7 +119,8 @@ import Eval
 
 
 --Change this to false before release
-debug = True
+release = False
+debug = False
 
 startEnv :: IO EnvStack
 startEnv = envStackFromList [
@@ -153,7 +163,7 @@ startEnv = envStackFromList [
   ("run", stringUnop' $ \file env -> do
     (EVoid,) <$> runFile file env),
   ("withGen", unop' $ \arg env -> case arg of
-    EObj fn@(FnObj {}) -> do
+    EObj (FnObj {}) -> do
       gen@(EObj (PrimObj (PGen ioRef chan) _)) <- makeGen 10
       lift $ forkIO $ do
         let
@@ -167,8 +177,26 @@ startEnv = envStackFromList [
           Left err -> putStrLn $ "Error in generator: " ++ err
           Right val -> pure ()
       pure (gen,env)
-    _ -> throwError $ "Invalid argument to withGen: " ++ prettyPrint arg)
+    _ -> throwError $ "Invalid argument to withGen: " ++ prettyPrint arg),
+  ("withFile", triop' (\path mode fn env -> do
+    case getString' path of
+      Just path -> case getString' mode of
+        Just mode -> case fn of
+          EObj (FnObj {}) -> do
+            let mode' = getMode mode
+            handle <- lift $ openFile path mode'
+            apply fn [Arg $ makeHandle handle path] env
+            lift $ hClose handle
+            pure (EVoid, env)
+          _ -> throwError "Invalid function in withFile"
+        Nothing -> throwError "Invalid mode in withFile"
+      Nothing -> throwError "Invalid path in withFile"))
   ]
+
+getMode "r" = ReadMode
+getMode "w" = WriteMode
+getMode "a" = AppendMode
+getMode "rw" = ReadWriteMode
 
 workingDirectory = replace '\\' '/' <$> getCurrentDirectory
 
@@ -184,7 +212,7 @@ parseEval str env = do
     x -> throwError $ "Invalid value for debug: " ++ prettyPrint x-}
 
 
-dataFile filename = if debug then pure filename
+dataFile filename = if not release then pure filename
   else (P.</> filename) <$> getAppUserDataDirectory "scriptlang"
 
 stdlibFilename = dataFile "stdlib.script"
@@ -218,7 +246,7 @@ repl env = do
           print expr
           putStrLn (prettyPrint expr)-}
       when debug $ lift $ do
-        print expr
+        --print expr
         putStrLn (prettyPrint expr)
 
       res <- handleCtrlC (Left "Interrupted") $ lift $ runErrorT (replEval expr env)
@@ -244,7 +272,7 @@ runFile filename env = do
   exprs <- parseInput filename input parseCompound (map desugar)
   when debug $ lift $ putStrLn $ "Running file: " ++ filename
   forM_ exprs $ \expr -> do
-    when debug $ lift $ print expr
+    --when debug $ lift $ print expr
     when debug $ lift $ putStrLn (prettyPrint expr)
     eval expr env
   pure env
@@ -253,7 +281,7 @@ runString :: String -> EnvStack -> IOThrowsError EnvStack
 runString input env = do
   exprs <- parseInput "" input parseCompound (map desugar)
   forM_ exprs $ \expr -> do
-    when debug $ lift $ print expr
+    --when debug $ lift $ print expr
     when debug $ lift $ putStrLn (prettyPrint expr)
     eval expr env
   pure env
@@ -270,7 +298,7 @@ replGetInput cont = do
   input <- case input_ of
     Nothing -> lift exitSuccess
     Just input -> pure input
-  if null input then if debug then lift exitSuccess else replGetInput cont else do
+  if null input then if not release then lift exitSuccess else replGetInput cont else do
   let
     input' = case cont of
       Just cont -> cont ++ "\n" ++ input

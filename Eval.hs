@@ -21,6 +21,7 @@ import Data.Set (Set)
 import System.Exit
 import System.Directory
 import qualified System.IO.Strict as Strict
+import System.IO
 import Data.Foldable (asum, toList)
 import Debug.Trace
 import System.Process
@@ -157,12 +158,7 @@ eval (EFnApp fn args) env = do
         _ -> evalFnApp
     EObj obj -> case args of
       [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
-      args'@(Arg (EId (id,ByVal)):args) -> do
-        val <- envLookup id env
-        case val of
-          Just val -> evalApply obj args' env
-          Nothing -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
-      args -> evalApply obj args env
+      args -> throwError ("Invalid function: " ++ prettyPrint (EObj obj))
     EVoid -> case args of
       [] -> pure (EVoid,env)
       args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
@@ -497,9 +493,21 @@ makeGen cap = do
       val <- lift $ readChan chan
       lift $ writeIORef ioRef val
       let gotOne = isJust val
-      lift $ writeIORef done gotOne
+      lift $ writeIORef done (not gotOne)
       pure (makeBool gotOne))
     ]
+makeHandle handle file = EObj $ PrimObj (PHandle handle file) $ envFromList [
+  ("atEOF", nilop $ makeBool <$> lift (hIsEOF handle)),
+  ("readChar", nilop $ do
+    eof <- lift $ hIsEOF handle
+    if eof then pure EVoid else makeChar <$> lift (hGetChar handle)),
+  ("writeChar", objUnop $ \obj -> case obj of
+    PrimObj (PChar char) _ -> do
+      lift $ hPutChar handle char
+      pure EVoid
+    _ -> throwError $ "Invalid argument to writeChar: " ++ prettyPrint obj)
+  ]
+
 
 --These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
 makeList' xs = EFnApp makeListPrim (map Arg xs)
@@ -637,6 +645,12 @@ unop' f = prim' ["x"] $ \args -> f (args!"x")
 
 binop :: (Expr -> Expr -> IOThrowsError Expr) -> Expr
 binop f = prim ["x", "y"] $ \args -> f (args!"x") (args!"y")
+
+triop :: (Expr -> Expr -> Expr -> IOThrowsError Expr) -> Expr
+triop f = prim ["x", "y", "z"] $ \args -> f (args!"x") (args!"y") (args!"z")
+
+triop' :: (Expr -> Expr -> Expr -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
+triop' f = prim' ["x", "y", "z"] $ \args -> f (args!"x") (args!"y") (args!"z")
 
 primUnop :: (PrimData -> IOThrowsError Expr) -> Expr
 primUnop f = prim ["x"] $ \args -> case args!"x" of
