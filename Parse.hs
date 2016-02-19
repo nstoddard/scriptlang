@@ -65,7 +65,7 @@ parseExpr = try parseDef <|> tryParseAssign
 
 parseNonStatement = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
-parseNonIf = buildExpressionParser opTable (parseNew' <|> parseNonWithExpr)
+parseNonIf = buildExpressionParser opTable (parseClone <|> parseNew' <|> parseNonWithExpr)
 parseNonWithExpr = try parseFn <|> parseFnApp
 parseNonFnAppExpr = parseSingleTokenExpr
 
@@ -82,6 +82,8 @@ parsePipes = do
 
 parseList = makeList' <$> (grouper '[' *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ']')
 parseParens = grouper '(' *> inAnyWhitespace parseExpr <* grouper ')'
+
+parseClone = EClone <$> (keyword "clone" /> parseSingleTokenExpr)
 
 parseNew' = do
   keyword "new"
@@ -235,7 +237,7 @@ opChars = "/<>?:\\|~!@#$%^&*+-="
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", "//", "/*", "*/"]
 --These are operators that are used as syntax in some cases, but can be redefined in others
 builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--"]
-keywords = ["true", "false", "new", "with", "extend", "void", "if", "else", "var"]
+keywords = ["true", "false", "new", "with", "extend", "clone", "void", "if", "else", "var"]
 
 groupChars = "()[]{}"
 

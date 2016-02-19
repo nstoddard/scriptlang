@@ -116,7 +116,7 @@ data Expr =
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EExec String [String] |
   EDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
-  EBlock [Expr] | EMakeObj [Expr] | ENew' [Expr] |
+  EBlock [Expr] | EMakeObj [Expr] | ENew' [Expr] | EClone Expr |
   EObj Obj |
   EValClosure Expr EnvStack |
   EIf Expr Expr Expr |
@@ -233,6 +233,7 @@ instance Pretty Expr where
   pretty (EBlock xs) = prettyBlock '(' ')' xs
   pretty (EMakeObj xs) = prettyBlock '{' '}' xs
   pretty (ENew' xs) = pretty "(" <//> pretty "new" </> hsep (map pretty xs) <//> pretty ")"
+  pretty (EClone x) = pretty "clone" </> pretty x
   pretty (EObj obj) = pretty obj
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
   pretty (EVar _) = pretty "<var>"
@@ -320,6 +321,7 @@ instance Show Expr where
   show (EBlock xs)         = "(EBlock " ++ show xs ++ ")"
   show (EMakeObj x)        = "(EMakeObj " ++ show x ++ ")"
   show (ENew' x)           = "(ENew' " ++ unwords (map show x) ++ ")"
+  show (EClone x)          = "(EClone " ++ show x ++ ")"
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
   show EUnknown            = "EUnknown"

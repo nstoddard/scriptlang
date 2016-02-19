@@ -174,6 +174,11 @@ eval (EMakeObj exprs) env = do
   forM_ exprs $ \expr -> eval expr env'
   obj <- envHead env'
   pure (EObj (Obj obj), env)
+eval (EClone x) env = do
+  (x',_) <- eval x env
+  case x' of
+    EObj (Obj obj) -> (,env) . EObj . Obj <$> lift (clone obj)
+    _ -> throwError "Invalid argument to clone; must be an object."
 eval (ENew' xs) env = do
   xs' <- mapM (\expr -> eval expr env) xs
   foldM (\(res, env) (x,_) -> case (res, x) of
@@ -527,6 +532,7 @@ desugar (EMemberAccessGetVar a b) = EMemberAccessGetVar (desugar a) b
 desugar (EBlock xs) = EBlock (map desugar xs)
 desugar (EMakeObj xs) = EMakeObj (map desugar xs)
 desugar (ENew' xs) = ENew' (map desugar xs)
+desugar (EClone x) = EClone (desugar x)
 desugar (EObj x) = EObj $ desugarObj x
 desugar (EIf a b c) = EIf (desugar a) (desugar b) (desugar c)
 desugar EUnknown = EUnknown
