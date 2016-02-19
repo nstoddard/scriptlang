@@ -158,7 +158,13 @@ eval (EFnApp fn args) env = do
         _ -> evalFnApp
     EObj obj -> case args of
       [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
-      args -> throwError ("Invalid function: " ++ prettyPrint (EObj obj))
+      args'@(Arg (EId (id,ByVal)):args) -> do
+        val <- envLookup id env
+        case val of
+          Just val -> evalApply obj args' env
+          Nothing -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
+      args -> evalApply obj args env
+      --args -> throwError ("Invalid function: " ++ prettyPrint (EObj obj))
     EVoid -> case args of
       [] -> pure (EVoid,env)
       args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
