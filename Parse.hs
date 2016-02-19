@@ -50,8 +50,6 @@ identifier' = do
   id <- identifier
   pure (id,accessType)
 
-parseVarDef = EVarDef <$> (keyword "var" /> identifier) </> ((symbol "<-" /> parseExpr) <|> pure EVoid)
-
 statementSeparator = inWhitespace $ oneOf ";,\n"
 listSeparator = oneOf ";,"
 
@@ -63,7 +61,7 @@ sepStartEndBy parser sep = many sep *> sepEndBy parser sep
 
 
 
-parseExpr = parseVarDef <|> try parseDef <|> tryParseAssign
+parseExpr = try parseDef <|> tryParseAssign
 
 parseNonStatement = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf

@@ -181,9 +181,6 @@ eval (EIf cond t f) env = do
     EObj (PrimObj (PBool False) _) -> ((,env) . fst) <$> eval f env
     c -> throwError $ "Invalid condition for if: " ++ prettyPrint c
 eval (EDef id val) env = envDefine id env $ do
-  val <- (,ByVal) <$> eval' val env
-  pure (val, fst val)
-eval (EVarDef id val) env = envDefine id env $ do
   (val,_) <- eval val env
   val' <- lift $ (,ByVal) . EVar <$> newIORef val
   pure (val', val)
@@ -201,12 +198,6 @@ eval x _ = throwError $ "eval unimplemented for " ++ show x
 --Like regular eval, but allows you to redefine things
 replEval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 replEval (EDef id val) env = envRedefine id env $ do
-  val <- (,ByVal) <$> replEval' val env
-  pure (val, fst val)
-{-replEval (EDef id val) env = do
-  (val',_) <- replEval val env
-  envRedefine id (val',ByVal) env-}
-replEval (EVarDef id val) env = envRedefine id env $ do
   (val,_) <- replEval val env
   val' <- lift $ (,ByVal) . EVar <$> newIORef val
   pure (val', val)
@@ -529,7 +520,6 @@ desugar (EFnApp EUnknown []) = EUnknown
 desugar (EFnApp fn args) = processUnknownArgs (desugar fn) (map desugarArg args)
 desugar (EMemberAccess a b) = EMemberAccess (desugar a) b
 desugar (EDef name val) = EDef name (desugar val)
-desugar (EVarDef name val) = EVarDef name (desugar val)
 desugar (EAssign a b) = EAssign (desugar a) (desugar b)
 desugar (EVar _) = error "Can't have an EVar in desugar!"
 desugar (EGetVar id) = EGetVar id

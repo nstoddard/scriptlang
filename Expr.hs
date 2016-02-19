@@ -110,7 +110,7 @@ data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EExec String [String] |
-  EDef String Expr | EVarDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
+  EDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
   EObj Obj |
   EValClosure Expr EnvStack |
@@ -197,7 +197,6 @@ instance Pretty Expr where
     then pretty obj </> pretty id
     else pretty obj <//> pretty "." <//> pretty id
   pretty (EDef id val) = pretty id </> pretty "=" </> pretty val
-  pretty (EVarDef id val) = pretty "var" </> pretty id </> pretty "<-" </> pretty val
   pretty (EAssign var val) = pretty var </> pretty "<-" </> pretty val
   pretty (EBlock xs) = prettyBlock xs
   pretty (ENew xs) = pretty "(" <//> pretty "new" </> prettyBlock xs <//> pretty ")"
@@ -284,7 +283,6 @@ instance Show Expr where
   show (EFnApp x xs)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ " " ++ ")"
   show (EMemberAccess x y) = "(EMemberAccess " ++ show x ++ " " ++ show y ++ ")"
   show (EDef a b)          = "(EDef " ++ show a ++ " " ++ show b ++ ")"
-  show (EVarDef a b)       = "(EVarDef " ++ show a ++ " " ++ show b ++ ")"
   show (EAssign a b)       = "(EAssign " ++ show a ++ " " ++ show b ++ ")"
   show (EVar _)            = "(EVar _)"
   show (EGetVar id)        = "(EGetVar " ++ show id ++ ")"
