@@ -53,7 +53,7 @@ identifier' = do
 statementSeparator = inWhitespace $ oneOf ";,\n"
 listSeparator = oneOf ";,"
 
-block = between (grouper '{') (grouper '}') parseCompound
+block start end = between (grouper start) (grouper end) parseCompound
 parseCompound = sepStartEndBy (inWhitespace parseExpr) (some statementSeparator)
 
 sepStartEndBy parser sep = many sep *> sepEndBy parser sep
@@ -71,7 +71,7 @@ parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [EBlock <$> block, parseParens, parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseOtherExpr = asum [EBlock <$> block '(' ')', parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
 parsePipes = do
   start <- parseNonPipeExpr
@@ -83,10 +83,10 @@ parsePipes = do
 parseList = makeList' <$> (grouper '[' *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ']')
 parseParens = grouper '(' *> inAnyWhitespace parseExpr <* grouper ')'
 
-parseNew = ENew <$> (keyword "new" /> block)
+parseNew = ENew <$> block '{' '}'
 parseWith = do
   obj <- parseNonWithExpr
-  let withArg = whitespace *> ((ENew <$> block) <|> parseNonWithExpr)
+  let withArg = whitespace *> ((ENew <$> block '{' '}') <|> parseNonWithExpr)
   xs <- chainl ((:[]) <$> try (whitespace *> keyword "with" /> withArg)) (pure (++)) []
   pure $ foldl EWith obj xs
 
@@ -234,7 +234,7 @@ opChars = "/<>?:\\|~!@#$%^&*+-="
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", "//", "/*", "*/"]
 --These are operators that are used as syntax in some cases, but can be redefined in others
 builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--"]
-keywords = ["true", "false", "new", "with", "void", "if", "else", "var"]
+keywords = ["true", "false", "new", "with", "extend", "void", "if", "else", "var"]
 
 groupChars = "()[]{}"
 

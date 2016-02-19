@@ -93,20 +93,20 @@ arithTests = TestLabel "arith" $ TestList [
   ]
 
 varTests = TestLabel "var" $ TestList [
-  testEq "{a = 5; a <- a*2; a}" "10",
-  testEq "{a = 5; {a = 10}; a}" "5",
-  testEq "{a = 5; {a <- 10}; a}" "10"
+  testEq "(a = 5; a <- a*2; a)" "10",
+  testEq "(a = 5; (a = 10); a)" "5",
+  testEq "(a = 5; (a <- 10); a)" "10"
   ]
 
 fnTests = TestLabel "fn" $ TestList [
-  testEq "{sumUpTo = n -> (n * (n+1)) div 2; sumUpTo 100}" "5050",
-  testEq "{fac = n -> if (n==0) 1 else n * fac (n-1); fac 5}" "120"
+  testEq "(sumUpTo = n -> (n * (n+1)) div 2; sumUpTo 100)" "5050",
+  testEq "(fac = n -> if (n==0) 1 else n * fac (n-1); fac 5)" "120"
   ]
 
 objTests = TestLabel "obj" $ TestList [
-  testEq "{x = new {a=5}; x.a}" "5",
-  testEq "{x = new {a=5}; x.a <- 10; x.a}" "10",
-  testEq "{x = new {a=5}; y = x with {}; y.a <- 10; x.a}" "5"
+  testEq "(x = {a=5}; x.a)" "5",
+  testEq "(x = {a=5}; x.a <- 10; x.a)" "10",
+  testEq "(x = {a=5}; y = x with {}; y.a <- 10; x.a)" "5"
   ]
 
 allTests = TestList [arithTests, varTests, fnTests, objTests]
