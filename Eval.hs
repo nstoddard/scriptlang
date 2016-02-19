@@ -113,7 +113,7 @@ eval (EMemberAccessGetVar obj id) env = do
 eval (EObj (FnObj params (Fn body) fnEnv)) env = do
   verifyParams params
   pure (EObj (FnObj params (Closure body env) fnEnv), env)
-eval prim@(EObj (FnObj _ (Prim _) _)) env = pure (prim, env) --This is necessary for evaulating lists and tuples; it should never happen in any other case; TODO: can this be removed?
+eval prim@(EObj (FnObj _ (Prim _) _)) env = pure (prim, env) --This is necessary for evaulating lists; it should never happen in any other case; TODO: can this be removed?
 eval closure@(EObj (FnObj _ (Closure _ _) _)) env = pure (closure,env) --TODO: this used to give an error but is now enabled; why?
 eval (EObj obj) env = pure (EObj obj, env)
 eval (EBlock []) env = pure (EVoid, env)
@@ -364,6 +364,7 @@ makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
   ("/", primUnop $ onFloat (fromInteger a/)),
   ("%", primUnop $ onNum (mod a) (fmod (fromInteger a))),
   ("^", primUnop $ onNum (a^) (fromInteger a**)),
+  -- TODO: this can crash!
   ("div", primUnop $ onInt (a `div`)),
   ("gcd", primUnop $ onInt (a `gcd`)),
   ("lcm", primUnop $ onInt (a `lcm`)),
@@ -468,12 +469,6 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("map", unop' $ \fn env -> (,env) . makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
   ("filter", unop' $ \fn env -> (,env) . makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)
   ]
-makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
-  ("toString", nilop $ pure (makeString $ prettyPrint a)),
-  ("empty", nilop $ pure (makeBool $ null a)),
-  ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
-  ("apply", primUnop $ onInt' (index a))
-  ]
 makeGen cap = do
   ioRef <- lift $ newIORef Nothing
   chan <- lift $ newBoundedChan cap
@@ -506,12 +501,10 @@ makeHandle handle file = EObj $ PrimObj (PHandle handle file) $ envFromList [
   ]
 
 
---These functions are necessary so that "(x,y)" evaluates its arguments before creating the tuple/list/whatever
+--These functions are necessary so that "(x,y)" evaluates its arguments before creating the list
 makeList' xs = EFnApp makeListPrim (map Arg xs)
-makeTuple' xs = EFnApp makeTuplePrim (map Arg xs)
 
 makeListPrim = ePrim [repParam "xs"] (\env -> (,env) . makeList . fromEList <$> envLookup' "xs" env)
-makeTuplePrim = ePrim [repParam "xs"] (\env -> (,env) . makeTuple . fromEList <$> envLookup' "xs" env)
 
 index :: [a] -> Integer -> IOThrowsError a
 index xs i = if i >= 0 && i < genericLength xs then pure (xs `genericIndex` i) else throwError "Invalid index!"

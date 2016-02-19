@@ -3,7 +3,6 @@
 pi = 3.141592653589793238462643383279
 tau = 2*pi
 
-// TODO: this fails. Why?
 sumUpTo = n -> (n * (n+1)) div 2
 fac = n -> if (n==0) 1 else n * fac (n-1)
 fib = n -> {

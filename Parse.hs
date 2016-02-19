@@ -71,7 +71,7 @@ parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [EBlock <$> block, parseTuple, parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseOtherExpr = asum [EBlock <$> block, parseParens, parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
 parsePipes = do
   start <- parseNonPipeExpr
@@ -81,9 +81,7 @@ parsePipes = do
   pure $ foldl f start xs
 
 parseList = makeList' <$> (grouper '[' *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ']')
-parseTuple = do
-  first <- grouper '(' *> inAnyWhitespace parseExpr
-  (grouper ')' *> pure first) <|> (makeTuple' . (first:) <$> (listSeparator *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ')'))
+parseParens = grouper '(' *> inAnyWhitespace parseExpr <* grouper ')'
 
 parseNew = ENew <$> (keyword "new" /> block)
 parseWith = do

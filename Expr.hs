@@ -102,7 +102,7 @@ envRemoveIORefs (EnvStack xs) = mapM get xs
 
 --- Expressions ---
 
-data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] | PTuple [Expr] |
+data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] |
   PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr)) | PHandle Handle String
 
 
@@ -202,7 +202,6 @@ prettyBlock [] = pretty "{" P.<$> pretty "}"
 prettyBlock xs = pretty "{" P.<$> P.indent 2 (P.vcat (map pretty xs)) P.<$> pretty "}"
 
 prettyList xs = pretty "[" <//> P.cat (P.punctuate P.comma $ map pretty xs) <//> pretty "]"
-prettyTuple xs = pretty "(" <//> P.cat (P.punctuate P.comma $ map pretty xs) <//> pretty ")"
 
 instance Pretty AccessType where
   pretty ByVal = pretty ""
@@ -254,7 +253,6 @@ instance Show PrimData where
   show (PBool x) = show x
   show (PChar x) = show x
   show (PList xs) = show xs
-  show (PTuple xs) = "Tuple: " ++ show xs
   show (PGen {}) = show "<gen>"
   show (PHandle handle file) = show "<handle to " ++ file ++ ">"
 
@@ -267,7 +265,6 @@ instance Pretty PrimData where
   pretty (PList xs) = case getString3' xs of
     Just str -> pretty '"' <//> pretty str <//> pretty '"'
     Nothing -> prettyList xs
-  pretty (PTuple xs) = prettyTuple xs
   pretty (PGen {}) = pretty "<generator>"
   pretty (PHandle handle file) = pretty "<handle to" </> pretty file <//> pretty ">"
 
