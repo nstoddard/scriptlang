@@ -272,6 +272,10 @@ testRun env str = do
   stdlibFile <- stdlibFilename
   runErrorT $ fst <$> parseEval str env
 
+testRun' str = do
+  env <- fromJust <$> getTestEnv
+  (prettyPrint <$>) <$> testRun env str
+
 testEqual :: String -> String -> Assertion -- IO Bool
 testEqual a b = do
   env <- getTestEnv

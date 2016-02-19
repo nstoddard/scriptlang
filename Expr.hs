@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, FlexibleContexts #-}
+{-# LANGUAGE TupleSections, FlexibleContexts, FlexibleInstances #-}
 
 module Expr where
 
@@ -106,6 +106,11 @@ data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [
   PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr)) | PHandle Handle String
 
 
+instance Clone Expr where
+  clone (EVar var) = EVar <$> cloneIORef var
+  clone x = pure x
+
+
 data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
@@ -153,6 +158,18 @@ data AccessType = ByVal | ByName deriving (Eq,Show)
 
 --When a FnObj is called, it looks in the Env to see if it can handle the message. If so, it does. If not, it actually calls the function.
 data Obj = Obj Env | PrimObj PrimData Env | FnObj [Param] Fn Env
+
+class Clone a where
+  -- |Copies all IORefs
+  clone :: a -> IO a
+
+instance Clone (Map String Value) where
+  clone = mapM (\(expr, accessType) -> (,accessType) <$> clone expr)
+
+instance Clone Obj where
+  clone (Obj env) = Obj <$> clone env
+  clone (PrimObj a b) = PrimObj a <$> clone b
+  clone (FnObj a b c) = FnObj a b <$> clone c
 
 data Fn = Prim (EnvStack -> IOThrowsError (Expr,EnvStack)) | Fn Expr | Closure Expr EnvStack
 

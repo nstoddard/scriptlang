@@ -172,7 +172,9 @@ eval (EWith a b) env = do
   (a', _) <- eval a env
   (b', _) <- eval b env
   case (a',b') of
-    (EObj (Obj a), EObj (Obj b)) -> pure (EObj . Obj $ M.union b a, env) --In the union, b must come before a because M.union is left-biased
+    (EObj (Obj a), EObj (Obj b)) -> do
+      a' <- lift $ clone a
+      pure (EObj . Obj $ M.union b a', env) --In the union, b must come before a because M.union is left-biased
     _ -> throwError "Invalid arguments to 'with'; both of them must be objects."
 eval (EIf cond t f) env = do
   (cond',_) <- eval cond env
