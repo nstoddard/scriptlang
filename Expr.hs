@@ -116,7 +116,7 @@ data Expr =
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
   EExec String [String] |
   EDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
-  EBlock [Expr] | ENew [Expr] | EWith Expr Expr |
+  EBlock [Expr] | EMakeObj [Expr] | ENew' [Expr] |
   EObj Obj |
   EValClosure Expr EnvStack |
   EIf Expr Expr Expr |
@@ -198,8 +198,8 @@ hsep [] = P.empty
 hsep [x] = x
 hsep (x:xs) = x </> hsep xs
 
-prettyBlock [] = pretty "{" P.<$> pretty "}"
-prettyBlock xs = pretty "{" P.<$> P.indent 2 (P.vcat (map pretty xs)) P.<$> pretty "}"
+prettyBlock start end [] = pretty start P.<$> pretty end
+prettyBlock start end xs = pretty start P.<$> P.indent 2 (P.vcat (map pretty xs)) P.<$> pretty end
 
 prettyList xs = pretty "[" <//> P.cat (P.punctuate P.comma $ map pretty xs) <//> pretty "]"
 
@@ -230,9 +230,9 @@ instance Pretty Expr where
     else pretty obj <//> pretty "." <//> pretty id
   pretty (EDef id val) = pretty id </> pretty "=" </> pretty val
   pretty (EAssign var val) = pretty var </> pretty "<-" </> pretty val
-  pretty (EBlock xs) = prettyBlock xs
-  pretty (ENew xs) = pretty "(" <//> pretty "new" </> prettyBlock xs <//> pretty ")"
-  pretty (EWith a b) = pretty a </> pretty "with" </> pretty b
+  pretty (EBlock xs) = prettyBlock '(' ')' xs
+  pretty (EMakeObj xs) = prettyBlock '{' '}' xs
+  pretty (ENew' xs) = pretty "(" <//> pretty "new" </> hsep (map pretty xs) <//> pretty ")"
   pretty (EObj obj) = pretty obj
   pretty (EIf cond t f) = pretty "(if" </> pretty cond </> pretty t </> pretty "else" </> pretty f <//> pretty ")"
   pretty (EVar _) = pretty "<var>"
@@ -318,8 +318,8 @@ instance Show Expr where
   show (EGetVar id)        = "(EGetVar " ++ show id ++ ")"
   show (EMemberAccessGetVar a b) = "(EMemberAccessGetVar " ++ show a ++ " " ++ show b ++ ")"
   show (EBlock xs)         = "(EBlock " ++ show xs ++ ")"
-  show (ENew x)            = "(ENew " ++ show x ++ ")"
-  show (EWith a b)         = "(EWith " ++ show a ++ " " ++ show b ++ ")"
+  show (EMakeObj x)        = "(EMakeObj " ++ show x ++ ")"
+  show (ENew' x)           = "(ENew' " ++ unwords (map show x) ++ ")"
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
   show EUnknown            = "EUnknown"

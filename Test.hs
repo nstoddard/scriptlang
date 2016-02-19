@@ -106,7 +106,7 @@ fnTests = TestLabel "fn" $ TestList [
 objTests = TestLabel "obj" $ TestList [
   testEq "(x = {a=5}; x.a)" "5",
   testEq "(x = {a=5}; x.a <- 10; x.a)" "10",
-  testEq "(x = {a=5}; y = x with {}; y.a <- 10; x.a)" "5"
+  testEq "(x = {a=5}; y = new x {b=4}; y.a <- 10; x.a)" "5"
   ]
 
 allTests = TestList [arithTests, varTests, fnTests, objTests]

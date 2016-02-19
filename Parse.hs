@@ -65,13 +65,13 @@ parseExpr = try parseDef <|> tryParseAssign
 
 parseNonStatement = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
-parseNonIf = buildExpressionParser opTable parseWith
+parseNonIf = buildExpressionParser opTable (parseNew' <|> parseNonWithExpr)
 parseNonWithExpr = try parseFn <|> parseFnApp
-parseNonFnAppExpr = parseNew <|> parseSingleTokenExpr
+parseNonFnAppExpr = parseSingleTokenExpr
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [EBlock <$> block '(' ')', parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseOtherExpr = asum [parseMakeObj, EBlock <$> block '(' ')', parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
 
 parsePipes = do
   start <- parseNonPipeExpr
@@ -83,12 +83,13 @@ parsePipes = do
 parseList = makeList' <$> (grouper '[' *> sepBy (inAnyWhitespace parseExpr) listSeparator <* grouper ']')
 parseParens = grouper '(' *> inAnyWhitespace parseExpr <* grouper ')'
 
-parseNew = ENew <$> block '{' '}'
-parseWith = do
-  obj <- parseNonWithExpr
-  let withArg = whitespace *> ((ENew <$> block '{' '}') <|> parseNonWithExpr)
-  xs <- chainl ((:[]) <$> try (whitespace *> keyword "with" /> withArg)) (pure (++)) []
-  pure $ foldl EWith obj xs
+parseNew' = do
+  keyword "new"
+  xs <- chainl1 ((:[]) <$> try (whitespace *> parseSingleTokenExpr)) (pure (++))
+  pure $ ENew' xs
+
+
+parseMakeObj = EMakeObj <$> block '{' '}'
 
 ops = [
   "^",

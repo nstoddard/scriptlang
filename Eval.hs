@@ -169,19 +169,20 @@ eval (EFnApp fn args) env = do
       [] -> pure (EVoid,env)
       args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
     x -> throwError ("Invalid function: " ++ prettyPrint x)
-eval (ENew exprs) env = do
+eval (EMakeObj exprs) env = do
   env' <- envNewScope env
   forM_ exprs $ \expr -> eval expr env'
   obj <- envHead env'
   pure (EObj (Obj obj), env)
-eval (EWith a b) env = do
-  (a', _) <- eval a env
-  (b', _) <- eval b env
-  case (a',b') of
-    (EObj (Obj a), EObj (Obj b)) -> do
-      a' <- lift $ clone a
-      pure (EObj . Obj $ M.union b a', env) --In the union, b must come before a because M.union is left-biased
-    _ -> throwError "Invalid arguments to 'with'; both of them must be objects."
+eval (ENew' xs) env = do
+  xs' <- mapM (\expr -> eval expr env) xs
+  foldM (\(res, env) (x,_) -> case (res, x) of
+    (EObj (Obj res), EObj (Obj obj)) -> do
+      obj' <- lift (clone obj)
+      -- In the union, obj' must come before res because M.union is left-biased
+      pure (EObj . Obj $ M.union obj' res, env)
+    _ -> throwError "Invalid argument to 'new'; must be an object."
+    ) (EObj (Obj M.empty), env) xs'
 eval (EIf cond t f) env = do
   (cond',_) <- eval cond env
   case cond' of
@@ -524,8 +525,8 @@ desugar (EVar _) = error "Can't have an EVar in desugar!"
 desugar (EGetVar id) = EGetVar id
 desugar (EMemberAccessGetVar a b) = EMemberAccessGetVar (desugar a) b
 desugar (EBlock xs) = EBlock (map desugar xs)
-desugar (ENew xs) = ENew (map desugar xs)
-desugar (EWith a b) = EWith (desugar a) (desugar b)
+desugar (EMakeObj xs) = EMakeObj (map desugar xs)
+desugar (ENew' xs) = ENew' (map desugar xs)
 desugar (EObj x) = EObj $ desugarObj x
 desugar (EIf a b c) = EIf (desugar a) (desugar b) (desugar c)
 desugar EUnknown = EUnknown
