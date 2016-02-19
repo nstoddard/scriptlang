@@ -130,11 +130,11 @@ exprEq _ _ = pure False
 
 objEq :: Obj -> Obj -> IO Bool
 objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
-  ((PInt a), (PInt b)) -> pure (a==b)
-  ((PFloat a), (PFloat b)) -> pure (a==b)
-  ((PBool a), (PBool b)) -> pure (a==b)
-  ((PChar a), (PChar b)) -> pure (a==b)
-  ((PList as), (PList bs)) -> and <$> (sequence $ exprEq <$> as <*> bs)
+  (PInt a, PInt b) -> pure (a==b)
+  (PFloat a, PFloat b) -> pure (a==b)
+  (PBool a, PBool b) -> pure (a==b)
+  (PChar a, PChar b) -> pure (a==b)
+  (PList as, PList bs) -> and <$> sequence (exprEq <$> as <*> bs)
   (_,_) -> pure False
 objEq _ _ = pure False
 
@@ -278,15 +278,15 @@ getList x = throwError $ "Not a list: " ++ prettyPrint x
 getChar' (EObj (PrimObj (PChar c) _)) = Just c
 getChar' _ = Nothing
 
-getString' (EObj (PrimObj (PList xs) _)) = let chars = catMaybes $ map getChar' xs in
+getString' (EObj (PrimObj (PList xs) _)) = let chars = mapMaybe getChar' xs in
   if length chars == length xs then Just chars else Nothing
 getString' _ = Nothing
 
-getString2' (PrimObj (PList xs) _) = let chars = catMaybes $ map getChar' xs in
+getString2' (PrimObj (PList xs) _) = let chars = mapMaybe getChar' xs in
   if length chars == length xs then Just chars else Nothing
 getString2' _ = Nothing
 
-getString3' xs = let chars = catMaybes $ map getChar' xs in
+getString3' xs = let chars = mapMaybe getChar' xs in
   if length chars == length xs then Just chars else Nothing
 
 

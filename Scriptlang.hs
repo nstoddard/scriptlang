@@ -112,7 +112,6 @@ import Debug.Trace
 import System.Process
 import qualified System.FilePath as P
 import System.IO
-import Test.HUnit
 
 import Text.Parsec hiding ((<|>), many, optional, State)
 import Text.Parsec.Expr
@@ -126,110 +125,9 @@ import Util
 import Expr
 import Parse
 import Eval
+import Test
+import Repl
 
-
-
--- TODO: does Cabal have a way to avoid this?
-release = False
---If true, print debug info about expressions
-debug = False
-
-startEnv :: IO EnvStack
-startEnv = envStackFromList [
-  ("-", primUnop $ onNum negate negate),
-  ("!", primUnop $ onBool not),
-  ("exit", nilop (lift exitSuccess)),
-  ("help", makeString "TODO: write documentation"),
-  ("execRaw", ePrim [reqParam "proc"] $ \env -> do
-    proc <- envLookup' "proc" env
-    case getString' proc of
-      Just proc -> do
-        lift $ system proc
-        pure (EVoid, env)
-      Nothing -> throwError "Invalid argument to execRaw"),
-  ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure (EVoid,env)), --TODO: THIS DOESN'T WORK
-  ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid),
-  ("print", objUnop' $ \obj env -> do
-    expr <- call obj "toString" [] env
-    case getString' expr of
-      Just str -> lift $ putStr str
-      Nothing -> throwError $ "toString must return a string; not " ++ prettyPrint expr
-    pure (EVoid,env)),
-  ("println", objUnop' $ \obj env -> do
-    expr <- call obj "toString" [] env
-    case getString' expr of
-      Just str -> lift $ putStrLn str
-      Nothing -> throwError $ "toString must return a string; not " ++ prettyPrint expr
-    pure (EVoid,env)),
-  ("readln", nilop $ makeString <$> lift getLine),
-  ("eval", objUnop' $ \obj env -> case getString2' obj of
-    Just str -> (,env) <$> fst <$> parseEval str env
-    Nothing -> throwError $ "Can't evaluate non-string: " ++ prettyPrint obj),
-  ("cd", stringUnop $ \str -> do
-    exists <- lift $ doesDirectoryExist str
-    if exists then do
-      lift $ setCurrentDirectory str
-      makeString <$> lift workingDirectory
-    else throwError $ "Directory doesn't exist: " ++ str),
-  ("wd", nilop $ makeString <$> lift workingDirectory),
-  ("run", stringUnop' $ \file env -> do
-    (EVoid,) <$> runFile file env),
-  ("withGen", unop' $ \arg env -> case arg of
-    EObj (FnObj {}) -> do
-      gen@(EObj (PrimObj (PGen ioRef chan) _)) <- makeGen 10
-      lift $ forkIO $ do
-        let
-          yield = unop $ \x -> do
-            lift $ writeChan chan (Just x)
-            pure EVoid
-        res <- runErrorT $ do
-          apply arg [Arg yield] env
-          lift $ writeChan chan Nothing
-        case res of
-          Left err -> putStrLn $ "Error in generator: " ++ err
-          Right val -> pure ()
-      pure (gen,env)
-    _ -> throwError $ "Invalid argument to withGen: " ++ prettyPrint arg),
-  ("withFile", triop' (\path mode fn env -> do
-    case getString' path of
-      Just path -> case getString' mode of
-        Just mode -> case fn of
-          EObj (FnObj {}) -> do
-            let mode' = getMode mode
-            handle <- lift $ openFile path mode'
-            lift $ print =<< hGetBuffering handle
-            apply fn [Arg $ makeHandle handle path] env
-            lift $ hClose handle
-            pure (EVoid, env)
-          _ -> throwError "Invalid function in withFile"
-        Nothing -> throwError "Invalid mode in withFile"
-      Nothing -> throwError "Invalid path in withFile"))
-  ]
-
-getMode "r" = ReadMode
-getMode "w" = WriteMode
-getMode "a" = AppendMode
-getMode "rw" = ReadWriteMode
-
-workingDirectory = replace '\\' '/' <$> getCurrentDirectory
-
-parseEval str env = do
-  expr <- parseInput "" str parseExpr desugar
-  eval expr env
-
-{-debugging env = do
-  debug <- lookupID "debug" env
-  case debug of
-    EObj (PrimObj (PBool True) _) -> pure True
-    EObj (PrimObj (PBool False) _) -> pure False
-    x -> throwError $ "Invalid value for debug: " ++ prettyPrint x-}
-
-
-dataFile filename = if not release then pure filename
-  else (P.</> filename) <$> getAppUserDataDirectory "scriptlang"
-
-stdlibFilename = dataFile "stdlib.script"
-historyFilename = dataFile "history"
 
 main = do
   env <- startEnv
@@ -242,173 +140,13 @@ main = do
     case env of
       Left err -> putStrLn err
       Right env -> runInputT (Settings noCompletion (Just historyFile) True) $ repl env
-  else do
-    case env of
-      Left err -> putStrLn err
-      Right env -> do
-        envRef <- newIORef env
-        forM_ args $ \arg -> do
-          env <- runErrorT $ runFile arg =<< lift (get envRef)
-          case env of
-            Left err -> putStrLn err >> exitFailure
-            Right env -> envRef $= env
+  else case env of
+    Left err -> putStrLn err
+    Right env -> do
+      envRef <- newIORef env
+      forM_ args $ \arg -> do
+        env <- runErrorT $ runFile arg =<< lift (get envRef)
+        case env of
+          Left err -> putStrLn err >> exitFailure
+          Right env -> envRef $= env
 
-testEnv :: IO (Maybe EnvStack)
-testEnv = do
-  stdlibFile <- stdlibFilename
-  env <- startEnv
-  e2m <$> (runErrorT $ envNewScope =<< runFile stdlibFile env)
-
-testEnv_ :: IORef (Maybe EnvStack)
-testEnv_ = unsafePerformIO (newIORef =<< testEnv)
-
-getTestEnv = get testEnv_
-
-e2m (Left err) = Nothing
-e2m (Right ok) = Just ok
-
-testRun :: EnvStack -> String -> IO (Either String Expr)
-testRun env str = do
-  stdlibFile <- stdlibFilename
-  runErrorT $ fst <$> parseEval str env
-
-testRun' str = do
-  env <- fromJust <$> getTestEnv
-  (prettyPrint <$>) <$> testRun env str
-
-testEqual :: String -> String -> Assertion -- IO Bool
-testEqual a b = do
-  env <- getTestEnv
-  when (isNothing env) $ assertFailure "Failed to eval env"
-  env <- pure (fromJust env)
-  exprA <- testRun env a
-  exprB <- testRun env b
-  case (exprA, exprB) of
-    (Right exprA, Right exprB) -> do
-      eq <- exprEq exprA exprB
-      assertBool ("Expected " ++ a ++ " to eval to " ++ b ++ " but got " ++ prettyPrint exprA) eq
-    (Right _, Left errB) -> assertFailure $ "Failed to eval `" ++ b ++ "`; got error " ++ errB
-    (Left errA, Right _) -> assertFailure $ "Failed to eval `" ++ a ++ "`; got error " ++ errA
-    (Left errA, Left errB) -> assertFailure $ "Failed to eval `" ++ a ++ "` and `" ++ b ++ "`; got errors " ++ errA ++ " and " ++ errB
-
-testEq = TestCase ... testEqual
-testEq' name = (TestLabel name . TestCase) ... testEqual
-
-arithTests = TestLabel "arith" $ TestList [
-  testEq "2+3" "5",
-  testEq "2*3" "6",
-  testEq "5-4" "1",
-  testEq "1/2" "0.5",
-  testEq "2 + 3 * 4" "14",
-  testEq "2+3 * 4" "20"
-  ]
-
-varTests = TestLabel "var" $ TestList [
-  testEq "{a = 5; a <- a*2; a}" "10",
-  testEq "{a = 5; {a = 10}; a}" "5",
-  testEq "{a = 5; {a <- 10}; a}" "10"
-  ]
-
-fnTests = TestLabel "fn" $ TestList [
-  testEq "{sumUpTo = n -> (n * (n+1)) div 2; sumUpTo 100}" "5050",
-  testEq "{fac = n -> if (n==0) 1 else n * fac (n-1); fac 5}" "120"
-  ]
-
-objTests = TestLabel "obj" $ TestList [
-  testEq "{x = new {a=5}; x.a}" "5",
-  testEq "{x = new {a=5}; x.a <- 10; x.a}" "10",
-  testEq "{x = new {a=5}; y = x with {}; y.a <- 10; x.a}" "5"
-  ]
-
-allTests = TestList [arithTests, varTests, fnTests, objTests]
-
-runTests = getTestEnv >> runTestTT allTests
-
-testParse parser = forever $ do
-  input <- replGetInput Nothing
-  lift $ case parse (parser <* eof) "test" input of
-    Left err -> putStrLn $ "Parse error: " ++ show err
-    Right expr -> print expr
-
-repl env = do
-  input <- replGetInput Nothing
-  expr_ <- lift $ runErrorT (parseInput "" input parseExpr desugar)
-  case expr_ of
-    Left err -> lift (putStrLn err) >> repl env
-    Right expr -> do
-      {-debug <- lift $ runErrorT (debugging env)
-      case debug of
-        Left err -> lift (putStrLn err) >> repl env
-        Right debug -> when debug $ lift $ do
-          print expr
-          putStrLn (prettyPrint expr)-}
-      when debug $ lift $ do
-        print expr
-        putStrLn (prettyPrint expr)
-        putStrLn ""
-
-      res <- handleCtrlC (Left "Interrupted") $ lift $ runErrorT (replEval expr env)
-      case res of
-        Left err -> lift (putStrLn err) >> repl env
-        Right (EVoid, env') -> repl env'
-        Right (expr', env') -> do
-          case getString' expr' of
-            Just str -> lift $ putStrLn str
-            Nothing -> lift $ putStrLn (prettyPrint expr')
-          repl env'
-
-parseInput :: String -> String -> Parsec String () a -> (a->a) -> IOThrowsError a
-parseInput srcName input parser desugar = case parse (parseWholeInput parser) srcName input of
-  Left err -> throwError ("Syntax error " ++ show err)
-  Right expr -> pure $ desugar expr
-
-runFile :: String -> EnvStack -> IOThrowsError EnvStack
-runFile filename env = do
-  exists <- lift $ doesFileExist filename
-  if not exists then throwError ("File doesn't exist: " ++ filename) else do
-  input <- lift $ Strict.readFile filename
-  exprs <- parseInput filename input parseCompound (map desugar)
-  when debug $ lift $ putStrLn $ "Running file: " ++ filename
-  forM_ exprs $ \expr -> do
-    when debug $ lift $ do
-        print expr
-        putStrLn (prettyPrint expr)
-        putStrLn ""
-    eval expr env
-  pure env
-
-runString :: String -> EnvStack -> IOThrowsError EnvStack
-runString input env = do
-  exprs <- parseInput "" input parseCompound (map desugar)
-  forM_ exprs $ \expr -> do
-    when debug $ lift $ do
-        print expr
-        putStrLn (prettyPrint expr)
-        putStrLn ""
-    eval expr env
-  pure env
-
-
-handleCtrlC = H.handle . ctrlC where
-  ctrlC :: a -> AsyncException -> InputT IO a
-  ctrlC def UserInterrupt = pure def
-  ctrlC def e = lift (putStrLn $ "Unknown exception: " ++ show e) >> pure def
-
-replGetInput cont = do
-  let prompt = if isJust cont then "... " else "script> "
-  input_ <- handleCtrlC (Just "void") $ getInputLine prompt
-  input <- case input_ of
-    Nothing -> lift exitSuccess
-    Just input -> pure input
-  if null input then if not release then lift exitSuccess else replGetInput cont else do
-  let
-    input' = case cont of
-      Just cont -> cont ++ "\n" ++ input
-      Nothing -> input
-  if countBrackets input' > 0 then replGetInput (Just input') else pure input'
-
-countBrackets [] = 0
-countBrackets (x:xs)
-  | x `elem` "([{" = countBrackets xs + 1
-  | x `elem` ")]}" = countBrackets xs - 1
-  | True = countBrackets xs

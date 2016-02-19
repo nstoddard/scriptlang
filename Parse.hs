@@ -137,7 +137,7 @@ operator startChar rassoc = (do
 
 
 --This can't use "symbol" because of cases like "_+5"
-parseUnknown = (tryString "_") *> pure EUnknown
+parseUnknown = tryString "_" *> pure EUnknown
 
 
 parseDef = do
@@ -175,8 +175,8 @@ parseArg = try (parseLongFlagArg <|> parseFlagArg <|> (whitespace *> do
         EId (id,_) -> KeywordArg id <$> parseNonFnAppExpr
         _ -> mzero
   parseListArg <|> parseKeywordArg <|> pure (Arg first)))
-parseLongFlagArg = LongFlagArg <$> (try $ someWhitespace *> symbol "--" *> identifier)
-parseFlagArg = FlagArg <$> (try $ someWhitespace *> symbol "-" *> some (noneOf spaceChars))
+parseLongFlagArg = LongFlagArg <$> try (someWhitespace *> symbol "--" *> identifier)
+parseFlagArg = FlagArg <$> try (someWhitespace *> symbol "-" *> some (noneOf spaceChars))
 parseArgs = do
   args <- many parseArg
   (args++) <$> ((symbol "_*" *> pure [RestArgs]) <|> pure [])
@@ -228,7 +228,7 @@ escapeChars = [
 parseWholeInput parser = inWhitespace parser <* eof
 
 keyword str = assert (str `elem` keywords) $ tryString str <* notFollowedBy (satisfy isAlphaNum)
-symbol str = assert (str `elem` builtinOps) $ tryString str <* notFollowedBy (satisfy $ (`elem` opChars))
+symbol str = assert (str `elem` builtinOps) $ tryString str <* notFollowedBy (satisfy (`elem` opChars))
 grouper c = assert (c `elem` groupChars) $ char c
 
 opChars = "/<>?:\\|~!@#$%^&*+-="

@@ -261,16 +261,16 @@ matchParams [] [] _ = pure []
 matchParams params@(ReqParam {}:_) (Arg arg:args) env = matchParams' params arg args True env
 matchParams params@(OptParam {}:_) (Arg arg:args) env = matchParams' params arg args True env
 matchParams params (ListArgNoEval []:args) env = matchParams params args env
-matchParams params@(ReqParam {}:_) (ListArgNoEval (arg:lArgs):args) env = do
+matchParams params@(ReqParam {}:_) (ListArgNoEval (arg:lArgs):args) env =
   matchParams' params arg (ListArgNoEval lArgs:args) False env
-matchParams params@(OptParam {}:_) (ListArgNoEval (arg:lArgs):args) env = do
+matchParams params@(OptParam {}:_) (ListArgNoEval (arg:lArgs):args) env =
   matchParams' params arg (ListArgNoEval lArgs:args) False env
 matchParams params (ListArg xs:args) env = do
   listArgs <- getList =<< eval' xs env
   matchParams params (ListArgNoEval listArgs:args) env
 matchParams (OptParam (name,accessType) def:params) [] env = (:) <$> matchArg True name accessType def env <*> matchParams params [] env
 matchParams [RepParam (name,accessType)] args env = do
-  args <- concat <$> (forM args $ \arg -> case arg of
+  args <- concat <$> forM args (\arg -> case arg of
     Arg arg -> (:[]) <$> eval' arg env
     ListArg xs -> getList =<< eval' xs env
     ListArgNoEval args -> pure args
@@ -347,7 +347,7 @@ verifyArgs = verifyArgs' S.empty where
   verifyArgs' set (RestArgs:args) = error "RestArgs in verifyArgs'"
 
 
-envLookup' name env = eval' (EId (name,ByVal)) env
+envLookup' name = eval' (EId (name,ByVal))
 
 
 makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
@@ -378,8 +378,8 @@ makeInt a = EObj $ PrimObj (PInt a) $ envFromList [
   ("logBase", primUnop $ onFloat (logBase $ fromInteger a)),
   ("atan2", primUnop $ onFloat (atan2 $ fromInteger a)),
   ("ln", floatNilop . log $ fromInteger a),
-  ("log", floatNilop . (logBase 10) $ fromInteger a),
-  ("lg", floatNilop . (logBase 2) $ fromInteger a),
+  ("log", floatNilop . logBase 10 $ fromInteger a),
+  ("lg", floatNilop . logBase 2 $ fromInteger a),
   ("exp", floatNilop . exp $ fromInteger a),
   ("sqrt", floatNilop . sqrt $ fromInteger a),
   ("sin", floatNilop . sin $ fromInteger a),
@@ -423,8 +423,8 @@ makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
   ("logBase", primUnop $ onFloat (logBase a)),
   ("atan2", primUnop $ onFloat (atan2 a)),
   ("ln", floatNilop $ log a),
-  ("log", floatNilop $ (logBase 10) a),
-  ("lg", floatNilop $ (logBase 2) a),
+  ("log", floatNilop $ logBase 10 a),
+  ("lg", floatNilop $ logBase 2 a),
   ("exp", floatNilop $ exp a),
   ("sqrt", floatNilop $ sqrt a),
   ("sin", floatNilop $ sin a),
@@ -444,9 +444,7 @@ makeChar a = EObj $ PrimObj (PChar a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a))
   ]
 makeBool a = EObj $ PrimObj (PBool a) $ envFromList [
-  ("toString", nilop $ case a of
-    True -> pure (makeString "true")
-    False -> pure (makeString "false")),
+  ("toString", nilop $ pure (makeString $ if a then "true" else "false")),
   ("&&", primUnop $ onBool (a&&)),
   ("||", primUnop $ onBool (a||))
   ]
@@ -467,8 +465,8 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
     PList b -> pure $ makeList (a++b)
     _ -> throwError "Invalid argument to ++"),
   ("apply", primUnop $ onInt' (index a)),
-  ("map", unop' $ \fn env -> (,env) <$> makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
-  ("filter", unop' $ \fn env -> (,env) <$> makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)
+  ("map", unop' $ \fn env -> (,env) . makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
+  ("filter", unop' $ \fn env -> (,env) . makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)
   ]
 makeTuple a = EObj $ PrimObj (PTuple a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
