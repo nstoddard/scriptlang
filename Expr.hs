@@ -117,6 +117,22 @@ data Expr =
   EIf Expr Expr Expr |
   EUnknown
 
+exprEq :: Expr -> Expr -> IO Bool
+exprEq EVoid EVoid = pure True
+exprEq (EId a) (EId b) = pure (a==b)
+exprEq (EObj a) (EObj b) = objEq a b
+exprEq _ _ = pure False
+
+objEq :: Obj -> Obj -> IO Bool
+objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
+  ((PInt a), (PInt b)) -> pure (a==b)
+  ((PFloat a), (PFloat b)) -> pure (a==b)
+  ((PBool a), (PBool b)) -> pure (a==b)
+  ((PChar a), (PChar b)) -> pure (a==b)
+  ((PList as), (PList bs)) -> and <$> (sequence $ exprEq <$> as <*> bs)
+  (_,_) -> pure False
+objEq _ _ = pure False
+
 fromEList :: Expr -> [Expr]
 fromEList (EObj (PrimObj (PList xs) _)) = xs
 fromEList xs = error $ "Internal error: not a list: " ++ show xs

@@ -89,7 +89,7 @@ parseNew = ENew <$> (keyword "new" /> block)
 parseWith = do
   obj <- parseNonWithExpr
   let withArg = whitespace *> ((ENew <$> block) <|> parseNonWithExpr)
-  xs <- chainl ((:[]) <$> (keyword "with" /> withArg)) (pure (++)) []
+  xs <- chainl ((:[]) <$> try (whitespace *> keyword "with" /> withArg)) (pure (++)) []
   pure $ foldl EWith obj xs
 
 ops = [

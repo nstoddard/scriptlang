@@ -112,6 +112,7 @@ import Debug.Trace
 import System.Process
 import qualified System.FilePath as P
 import System.IO
+import Test.HUnit
 
 import Text.Parsec hiding ((<|>), many, optional, State)
 import Text.Parsec.Expr
@@ -131,7 +132,7 @@ import Eval
 -- TODO: does Cabal have a way to avoid this?
 release = False
 --If true, print debug info about expressions
-debug = True
+debug = False
 
 startEnv :: IO EnvStack
 startEnv = envStackFromList [
@@ -252,7 +253,72 @@ main = do
             Left err -> putStrLn err >> exitFailure
             Right env -> envRef $= env
 
+testEnv :: IO (Maybe EnvStack)
+testEnv = do
+  stdlibFile <- stdlibFilename
+  env <- startEnv
+  e2m <$> (runErrorT $ envNewScope =<< runFile stdlibFile env)
 
+testEnv_ :: IORef (Maybe EnvStack)
+testEnv_ = unsafePerformIO (newIORef =<< testEnv)
+
+getTestEnv = get testEnv_
+
+e2m (Left err) = Nothing
+e2m (Right ok) = Just ok
+
+testRun :: EnvStack -> String -> IO (Either String Expr)
+testRun env str = do
+  stdlibFile <- stdlibFilename
+  runErrorT $ fst <$> parseEval str env
+
+testEqual :: String -> String -> Assertion -- IO Bool
+testEqual a b = do
+  env <- getTestEnv
+  when (isNothing env) $ assertFailure "Failed to eval env"
+  env <- pure (fromJust env)
+  exprA <- testRun env a
+  exprB <- testRun env b
+  case (exprA, exprB) of
+    (Right exprA, Right exprB) -> do
+      eq <- exprEq exprA exprB
+      assertBool ("Expected " ++ a ++ " to eval to " ++ b ++ " but got " ++ prettyPrint exprA) eq
+    (Right _, Left errB) -> assertFailure $ "Failed to eval `" ++ b ++ "`; got error " ++ errB
+    (Left errA, Right _) -> assertFailure $ "Failed to eval `" ++ a ++ "`; got error " ++ errA
+    (Left errA, Left errB) -> assertFailure $ "Failed to eval `" ++ a ++ "` and `" ++ b ++ "`; got errors " ++ errA ++ " and " ++ errB
+
+testEq = TestCase ... testEqual
+testEq' name = (TestLabel name . TestCase) ... testEqual
+
+arithTests = TestLabel "arith" $ TestList [
+  testEq "2+3" "5",
+  testEq "2*3" "6",
+  testEq "5-4" "1",
+  testEq "1/2" "0.5",
+  testEq "2 + 3 * 4" "14",
+  testEq "2+3 * 4" "20"
+  ]
+
+varTests = TestLabel "var" $ TestList [
+  testEq "{a = 5; a <- a*2; a}" "10",
+  testEq "{a = 5; {a = 10}; a}" "5",
+  testEq "{a = 5; {a <- 10}; a}" "10"
+  ]
+
+fnTests = TestLabel "fn" $ TestList [
+  testEq "{sumUpTo = n -> (n * (n+1)) div 2; sumUpTo 100}" "5050",
+  testEq "{fac = n -> if (n==0) 1 else n * fac (n-1); fac 5}" "120"
+  ]
+
+objTests = TestLabel "obj" $ TestList [
+  testEq "{x = new {a=5}; x.a}" "5",
+  testEq "{x = new {a=5}; x.a <- 10; x.a}" "10",
+  testEq "{x = new {a=5}; y = x with {}; y.a <- 10; x.a}" "5"
+  ]
+
+allTests = TestList [arithTests, varTests, fnTests, objTests]
+
+runTests = getTestEnv >> runTestTT allTests
 
 testParse parser = forever $ do
   input <- replGetInput Nothing
