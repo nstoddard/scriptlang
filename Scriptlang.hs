@@ -4,11 +4,19 @@ module Main where
 
 {- TODO
   TODO for first version:
+    Files aren't closed at the end of withFile if interrupted by ctrl-c
+    After compiling the interpreter and running it at command line startup, it doesn't handle ctrl-c correctly - it interrupts processes fine, but when you press ctrl-c it should print "^c" and go to the next line. It prints a newline but it doesn't show up until you type something else. If you press ctrl-c twice in a row, it quits.
+    Copying a file with 'read "Scriptlang.hs" | write "copy"' is really slow, only a few KB/sec
+      The current pipe mechanism isn't well-suited to very long strings of chars - it's good for sequences with only a few hundred elements, maybe a few thousand
+      What should replace it - perhaps batch reads/writes?
     When you create a generator function with a typo:
       fileGen file -> makeGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
     And try to use it:
       testGen = fileGen "test"
     It gives a nonsensical error message; it should tell you that makeGen is not found
+    withGen should take an optional first parameter of how big its buffer should be
+    There needs to be a way to terminate a generator early
+    By-name values act similar to variables
 
     Why did I use {} rather than () for the generator examples below?
     Catch divide-by-zero errors, and every other error, and don't terminate the app
@@ -53,6 +61,7 @@ module Main where
     Glob syntax and regexes
     Extension methods
     Function overloading
+      Need overloading by # of arguments but not necessarily by type
     "Invalid argument to <implementation detail>" should be changed to something more meaningful
     Allow user-defined operator precedence and associativity. the current rule just doesn't work very well and is too inflexible. However, each operator must always have the same precedence and associativity no matter what object it's called on, otherwise it would be unparseable.
     Don't print floating-point numbers in scientific notation so often; certainly don't for numbers like "0.01"
@@ -95,6 +104,7 @@ import Data.StateVar
 import qualified Data.Map as M
 import Data.Map (Map)
 import System.Exit
+import qualified System.Environment as E
 import System.Directory
 import qualified System.IO.Strict as Strict
 import Data.Foldable (asum, toList)
@@ -118,8 +128,8 @@ import Eval
 
 
 
---Change this to false before release
-release = False
+release = True
+--If true, print debug info about expressions
 debug = False
 
 startEnv :: IO EnvStack
@@ -185,6 +195,7 @@ startEnv = envStackFromList [
           EObj (FnObj {}) -> do
             let mode' = getMode mode
             handle <- lift $ openFile path mode'
+            lift $ print =<< hGetBuffering handle
             apply fn [Arg $ makeHandle handle path] env
             lift $ hClose handle
             pure (EVoid, env)
@@ -222,10 +233,25 @@ main = do
   env <- startEnv
   stdlibFile <- stdlibFilename
   env <- runErrorT $ envNewScope =<< runFile stdlibFile env
-  historyFile <- historyFilename
-  case env of
-    Left err -> putStrLn err
-    Right env -> runInputT (defaultSettings {historyFile=Just historyFile}) $ repl env
+
+  args <- E.getArgs
+  if null args then do
+    historyFile <- historyFilename
+    case env of
+      Left err -> putStrLn err
+      Right env -> runInputT (Settings noCompletion (Just historyFile) True) $ repl env
+  else do
+    case env of
+      Left err -> putStrLn err
+      Right env -> do
+        envRef <- newIORef env
+        forM_ args $ \arg -> do
+          env <- runErrorT $ runFile arg =<< lift (get envRef)
+          case env of
+            Left err -> putStrLn err >> exitFailure
+            Right env -> envRef $= env
+
+
 
 testParse parser = forever $ do
   input <- replGetInput Nothing

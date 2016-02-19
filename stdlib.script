@@ -29,3 +29,8 @@ compose a b -> x => a (b (x))
 println 'Scriptlang version 0.1'
 pwd -> println (wd)
 pwd
+
+read file -> withGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
+write file gen -> withFile file "w" (file => while (gen.moveNext) {file.writeChar (gen.cur)})
+
+dupEvery gen -> withGen (yield => while (gen.moveNext) {yield (gen.cur); yield (gen.cur)})
