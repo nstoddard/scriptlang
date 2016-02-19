@@ -128,9 +128,10 @@ import Eval
 
 
 
-release = True
+-- TODO: does Cabal have a way to avoid this?
+release = False
 --If true, print debug info about expressions
-debug = False
+debug = True
 
 startEnv :: IO EnvStack
 startEnv = envStackFromList [
@@ -272,8 +273,9 @@ repl env = do
           print expr
           putStrLn (prettyPrint expr)-}
       when debug $ lift $ do
-        --print expr
+        print expr
         putStrLn (prettyPrint expr)
+        putStrLn ""
 
       res <- handleCtrlC (Left "Interrupted") $ lift $ runErrorT (replEval expr env)
       case res of
@@ -298,8 +300,10 @@ runFile filename env = do
   exprs <- parseInput filename input parseCompound (map desugar)
   when debug $ lift $ putStrLn $ "Running file: " ++ filename
   forM_ exprs $ \expr -> do
-    --when debug $ lift $ print expr
-    when debug $ lift $ putStrLn (prettyPrint expr)
+    when debug $ lift $ do
+        print expr
+        putStrLn (prettyPrint expr)
+        putStrLn ""
     eval expr env
   pure env
 
@@ -307,8 +311,10 @@ runString :: String -> EnvStack -> IOThrowsError EnvStack
 runString input env = do
   exprs <- parseInput "" input parseCompound (map desugar)
   forM_ exprs $ \expr -> do
-    --when debug $ lift $ print expr
-    when debug $ lift $ putStrLn (prettyPrint expr)
+    when debug $ lift $ do
+        print expr
+        putStrLn (prettyPrint expr)
+        putStrLn ""
     eval expr env
   pure env
 

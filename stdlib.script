@@ -3,9 +3,9 @@
 pi = 3.141592653589793238462643383279
 tau = 2*pi
 
-sumUpTo n -> (n * (n+1)) div 2
-fac n -> if (n==0) 1 else n * fac (n-1)
-fib n -> {
+sumUpTo = n -> (n * (n+1)) div 2
+fac = n -> if (n==0) 1 else n * fac (n-1)
+fib = n -> {
   var a <- 0
   var b <- 1
   var i <- 0
@@ -18,19 +18,19 @@ fib n -> {
   a
 }
 
-id x -> x
+id = x -> x
 
-list xs* -> xs
+list = xs* -> xs
 
-while ~cond ~f -> if cond {f; while ~cond ~f}
+while = ~cond ~f -> if cond {f; while ~cond ~f}
 
-compose a b -> x => a (b (x))
+compose = a b -> x -> a (b (x))
 
 println 'Scriptlang version 0.1'
-pwd -> println (wd)
+pwd = -> println (wd)
 pwd
 
-read file -> withGen (yield => withFile file "r" (file => while (!(file.atEOF)) {yield (file.readChar)}))
-write file gen -> withFile file "w" (file => while (gen.moveNext) {file.writeChar (gen.cur)})
+read = file -> withGen (yield -> withFile file "r" (file -> while (!(file.atEOF)) {yield (file.readChar)}))
+write = file gen -> withFile file "w" (file -> while (gen.moveNext) {file.writeChar (gen.cur)})
 
-dupEvery gen -> withGen (yield => while (gen.moveNext) {yield (gen.cur); yield (gen.cur)})
+dupEvery = gen -> withGen (yield -> while (gen.moveNext) {yield (gen.cur); yield (gen.cur)})

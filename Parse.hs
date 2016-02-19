@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, FlexibleContexts #-}
 
 {-
   Each parser should parse only the stated expression, with no whitespace on either side. This is necessary in order to support the operator syntax I want.
@@ -144,14 +144,11 @@ parseUnknown = (tryString "_") *> pure EUnknown
 
 parseDef = do
   id <- identifier <* whitespace
-  let
-    parseValDef = EDef id <$> (symbol "=" /> parseExpr)
-    parseFnDef = EDef id ... eFn <$> parseParams </> (symbol "->" /> parseExpr)
-  parseValDef <|> parseFnDef
+  EDef id <$> (symbol "=" /> parseExpr)
 
 parseFn = parseFn' <|> parseNullaryFn
-parseFn' = eFn <$> parseSomeParams </> (symbol "=>" /> parseExpr)
-parseNullaryFn = eFn [] <$> (symbol "=>" /> parseExpr)
+parseFn' = eFn <$> parseSomeParams </> (symbol "->" /> parseExpr)
+parseNullaryFn = eFn [] <$> (symbol "->" /> parseExpr)
 
 parseParams = parseSomeParams <|> pure []
 
