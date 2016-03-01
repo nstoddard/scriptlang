@@ -99,7 +99,7 @@ envRedefine id env@(EnvStack (x:xs)) f = do
 
 --- Expressions ---
 
-data PrimData = PInt Integer | PFloat Double | PBool Bool | PChar Char | PList [Expr] |
+data PrimData = PFloat Double | PBool Bool | PChar Char | PList [Expr] |
   PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr)) | PHandle Handle String
 
 
@@ -127,7 +127,6 @@ exprEq _ _ = pure False
 
 objEq :: Obj -> Obj -> IO Bool
 objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
-  (PInt a, PInt b) -> pure (a==b)
   (PFloat a, PFloat b) -> pure (a==b)
   (PBool a, PBool b) -> pure (a==b)
   (PChar a, PChar b) -> pure (a==b)
@@ -246,7 +245,6 @@ instance Pretty Fn where
   pretty (Closure body env) = pretty body
 
 instance Show PrimData where
-  show (PInt x) = show x
   show (PFloat x) = show x
   show (PBool x) = show x
   show (PChar x) = show x
@@ -255,7 +253,6 @@ instance Show PrimData where
   show (PHandle handle file) = show "<handle to " ++ file ++ ">"
 
 instance Pretty PrimData where
-  pretty (PInt x) = pretty x
   pretty (PFloat x) = pretty x
   pretty (PBool True) = pretty "true"
   pretty (PBool False) = pretty "false"
