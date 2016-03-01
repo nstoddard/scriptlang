@@ -364,6 +364,7 @@ makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
   ("+", primUnop $ onFloat (a+)),
   ("-", primUnop $ onFloat (a-)),
   ("*", primUnop $ onFloat (a*)),
+  ("apply", primUnop $ onFloat (a*)),
   ("/", primUnop $ onFloat (a/)),
   ("%", primUnop $ onFloat (fmod a)),
   ("^", primUnop $ onFloat (a**)),
