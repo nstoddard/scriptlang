@@ -103,7 +103,6 @@ import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M
 import Data.Map (Map)
-import System.Exit
 import qualified System.Environment as E
 import System.Directory
 import qualified System.IO.Strict as Strict

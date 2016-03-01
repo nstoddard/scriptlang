@@ -17,7 +17,6 @@ import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M
 import Data.Map (Map)
-import System.Exit
 import qualified System.Environment as E
 import System.Directory
 import qualified System.IO.Strict as Strict
@@ -35,7 +34,7 @@ import System.Console.Haskeline as H
 import Control.Concurrent hiding (writeChan)
 import Control.Concurrent.BoundedChan
 
-import Util
+import Util hiding (writeChan)
 
 import Expr
 import Parse
@@ -161,8 +160,8 @@ startEnv = envStackFromList [
         lift $ system proc
         pure (EVoid, env)
       Nothing -> throwError "Invalid argument to execRaw"),
-  ("env", nilop' $ \env -> lift (print =<< getEnv env) *> pure (EVoid,env)), --TODO: THIS DOESN'T WORK
-  ("envOf", unop $ \expr -> (lift . (print <=< getEnv) =<< getExprEnv expr) *> pure EVoid),
+  ("env", nilop' $ \env -> lift (print =<< getEnvs env) *> pure (EVoid,env)), --TODO: THIS DOESN'T WORK
+  ("envOf", unop $ \expr -> (lift . (print <=< getEnvs) =<< getExprEnv expr) *> pure EVoid),
   ("print", objUnop' $ \obj env -> do
     expr <- call obj "toString" [] env
     case getString' expr of

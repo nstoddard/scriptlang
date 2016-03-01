@@ -25,9 +25,9 @@ import System.IO
 import Data.Foldable (asum, toList)
 import Debug.Trace
 import System.Process
-import Control.Concurrent.BoundedChan
+import Control.Concurrent.BoundedChan as B
 
-import Util
+import Util hiding (try)
 
 import Expr
 
@@ -92,10 +92,10 @@ eval (EMemberAccess obj id) env = do
   obj <- eval' obj env
   case obj of
     EObj (Obj oenv) -> do
-      val <- evalID' True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' True (eId id) "Object has no such field in member access: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EObj (PrimObj prim oenv) -> do
-      val <- evalID' True (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' True (eId id) "Object has no such field in member access: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
@@ -103,10 +103,10 @@ eval (EMemberAccessGetVar obj id) env = do
   obj <- eval' obj env
   case obj of
     EObj (Obj oenv) -> do
-      val <- evalID' False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' False (eId id) "Object has no such field in member access 2: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EObj (PrimObj prim oenv) -> do
-      val <- evalID' False (eId id) "Object has no such field: " =<< lift (envStackFromEnv oenv)
+      val <- evalID' False (eId id) "Object has no such field in member access 2: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
@@ -488,7 +488,7 @@ makeGen cap = do
     ("moveNext", nilop $ do
       done' <- lift $ readIORef done
       if done' then pure (makeBool False) else do
-      val <- lift $ readChan chan
+      val <- lift $ B.readChan chan
       lift $ writeIORef ioRef val
       let gotOne = isJust val
       lift $ writeIORef done (not gotOne)

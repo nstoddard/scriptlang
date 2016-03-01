@@ -28,7 +28,7 @@ import Control.Concurrent.BoundedChan
 import qualified Text.PrettyPrint.Leijen as P
 import Text.PrettyPrint.Leijen ((<//>), (</>), Pretty, pretty, displayS, renderPretty)
 
-import Util
+import Util hiding ((</>))
 
 --- Environments ---
 
@@ -38,9 +38,9 @@ type Value = (Expr,AccessType)
 type Env = Map String Value
 data EnvStack = EnvStack [IORef Env]
 
-getEnv :: EnvStack -> IO [Env]
-getEnv (EnvStack []) = pure []
-getEnv (EnvStack (env:envs)) = (:) <$> get env <*> getEnv (EnvStack envs)
+getEnvs :: EnvStack -> IO [Env]
+getEnvs (EnvStack []) = pure []
+getEnvs (EnvStack (env:envs)) = (:) <$> get env <*> getEnvs (EnvStack envs)
 
 envStackFromEnv :: Env -> IO EnvStack
 envStackFromEnv env = (EnvStack . (:[])) <$> newIORef env
@@ -93,9 +93,6 @@ envRedefine id env@(EnvStack (x:xs)) f = do
   (val,ret) <- f
   lift $ x $= M.insert id val x'
   pure (ret, env)
-
-envRemoveIORefs :: EnvStack -> IO [Map String Value]
-envRemoveIORefs (EnvStack xs) = mapM get xs
 
 
 

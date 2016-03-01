@@ -30,7 +30,7 @@ import Text.Parsec hiding ((<|>), many, optional, State)
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Expr
 
-import Util
+import Util hiding (try, (</>), Infix)
 
 import Expr
 import Eval
