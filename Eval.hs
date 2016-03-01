@@ -365,6 +365,7 @@ makeFloat a aUnits = EObj $ PrimObj (PFloat a) $ envFromList [
   ("+", primUnop $ onFloat (a+)),
   ("-", primUnop $ onFloat (a-)),
   ("*", primUnop $ onFloat (a*)),
+  ("apply", primUnop $ onFloat (a*)),
   ("/", primUnop $ onFloat (a/)),
   ("%", primUnop $ onFloat (fmod a)),
   ("^", primUnop $ onFloat (a**)),
@@ -659,30 +660,20 @@ stringUnop' f = objUnop' $ \obj env -> case getString2' obj of
   Nothing -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint obj
 
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
---onNum onInt onFloat (PInt b) = pure . makeInt $ onInt b
 onNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
 onNum onInt onFloat _ = throwError "Invalid argument to onNum"
 
-onInt :: (Integer -> Integer) -> (PrimData -> IOThrowsError Expr)
---onInt onInt (PInt b) = pure . makeInt $ onInt b
-onInt onInt _ = throwError "Invalid argument to onInt"
-
 onInt' :: (Integer -> IOThrowsError Expr) -> (PrimData -> IOThrowsError Expr)
---onInt' f (PInt b) = f b
+onInt' f (PFloat b) = case asApproxInt b of
+  Just b -> f b
+  _ -> throwError "Invalid argument to onInt'"
 onInt' f _ = throwError "Invalid argument to onInt'"
 
 onFloat :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
---onFloat onFloat (PInt b) = pure . makeFloat $ onFloat (fromInteger b)
 onFloat onFloat (PFloat b) = pure . makeFloat $ onFloat b
 onFloat onFloat _ = throwError "Invalid argument to onFloat"
 
-onNumToBool :: (Integer -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
---onNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt b
-onNumToBool onInt onFloat (PFloat b) = pure . makeBool $ onFloat b
-onNumToBool onInt onFloat _ = throwError "Invalid argument to onNumToBool"
-
 onFloatToBool :: (Double -> Bool)  -> (PrimData -> IOThrowsError Expr)
---onFloatToBool onFloat (PInt b) = pure . makeBool $ onFloat (fromInteger b)
 onFloatToBool onFloat (PFloat b) = pure . makeBool $ onFloat b
 onFloatToBool onFloat _ = throwError "Invalid argument to onFloatToBool"
 
