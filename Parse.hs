@@ -61,7 +61,19 @@ sepStartEndBy parser sep = many sep *> sepEndBy parser sep
 
 
 
-parseExpr = try parseDef <|> tryParseAssign
+parseExpr = parseUnitDef <|> try parseDef <|> tryParseAssign
+
+parseUnitDef = do
+  utype <- (tryString "si-unit" *> pure USI) <|>
+    (tryString "bin-unit" *> pure UBin) <|>
+    (tryString "unit" *> pure UNormal)
+  names <- whitespace *> sepBy1 identifier (char '/')
+  whitespace
+  abbrs <- option [] $ try (char '(' /> sepBy1 identifier (char '/') </ char ')')
+  whitespace
+  value <- option Nothing $ Just <$> (char '=' /> parseExpr <* whitespace)
+  pure $ EUnitDef utype names abbrs value
+
 
 parseNonStatement = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
@@ -237,7 +249,7 @@ opChars = "/<>?:\\|~!@#$%^&*+-="
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", "//", "/*", "*/"]
 --These are operators that are used as syntax in some cases, but can be redefined in others
 builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--"]
-keywords = ["true", "false", "new", "with", "extend", "clone", "void", "if", "else", "var"]
+keywords = ["true", "false", "new", "with", "extend", "clone", "void", "if", "else", "var", "unit", "si-unit", "bin-unit"]
 
 groupChars = "()[]{}"
 

@@ -2,6 +2,10 @@
 
 module Main where
 
+{- new todo
+  Did I make the same RAM-consuming mistake I made at first with unitcalc? It might not be so obvious with this app, since the environment is so much smaller.
+-}
+
 {- TODO
   TODO for first version:
     Files aren't closed at the end of withFile if interrupted by ctrl-c

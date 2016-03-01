@@ -210,6 +210,7 @@ eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 
 --Like regular eval, but allows you to redefine things
+-- TODO: get rid of this! Everywhere should be treated like the REPL currently is
 replEval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 replEval (EDef id val) env = envRedefine id env $ do
   (val,_) <- replEval val env
@@ -358,8 +359,8 @@ envLookup' name = eval' (EId (name,ByVal))
 
 makeInt = makeFloat . fromIntegral
 
-makeFloat :: Double -> Expr
-makeFloat a = EObj $ PrimObj (PFloat a) $ envFromList [
+makeFloat :: Double -> Units -> Expr
+makeFloat a aUnits = EObj $ PrimObj (PFloat a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("+", primUnop $ onFloat (a+)),
   ("-", primUnop $ onFloat (a-)),
@@ -674,10 +675,6 @@ onFloat :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 --onFloat onFloat (PInt b) = pure . makeFloat $ onFloat (fromInteger b)
 onFloat onFloat (PFloat b) = pure . makeFloat $ onFloat b
 onFloat onFloat _ = throwError "Invalid argument to onFloat"
-
-onFloatOnly :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
-onFloatOnly onFloat (PFloat b) = pure . makeFloat $ onFloat b
-onFloatOnly onFloat _ = throwError "Invalid argument to onFloatOnly"
 
 onNumToBool :: (Integer -> Bool) -> (Double -> Bool) -> (PrimData -> IOThrowsError Expr)
 --onNumToBool onInt onFloat (PInt b) = pure . makeBool $ onInt b
