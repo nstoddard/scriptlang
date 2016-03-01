@@ -357,12 +357,12 @@ verifyArgs = verifyArgs' S.empty where
 envLookup' name = eval' (EId (name,ByVal))
 
 
-makeInt = makeFloat . fromIntegral
+makeInt a = makeFloat (fromIntegral a) M.empty
 
 makeFloat :: Double -> Units -> Expr
-makeFloat a aUnits = EObj $ PrimObj (PFloat a) $ envFromList [
-  ("toString", nilop $ pure (makeString $ prettyPrint a)),
-  ("+", primUnop $ onFloat (a+)),
+makeFloat a aUnits = EObj $ PrimObj (PFloat a aUnits) $ envFromList [
+  ("toString", nilop $ pure (makeString $ prettyPrint a))
+  {-("+", primUnop $ onFloat (a+)),
   ("-", primUnop $ onFloat (a-)),
   ("*", primUnop $ onFloat (a*)),
   ("apply", primUnop $ onFloat (a*)),
@@ -412,10 +412,10 @@ makeFloat a aUnits = EObj $ PrimObj (PFloat a) $ envFromList [
     _ -> throwError "Invalid argument to 'to'"),
   ("div", primUnop $ onApproxInt (div) a),
   ("gcd", primUnop $ onApproxInt (gcd) a),
-  ("lcm", primUnop $ onApproxInt (lcm) a)
+  ("lcm", primUnop $ onApproxInt (lcm) a)-}
   ]
 
-onApproxInt :: (Integer -> Integer -> Integer) -> Double -> (PrimData -> IOThrowsError Expr)
+{-onApproxInt :: (Integer -> Integer -> Integer) -> Double -> (PrimData -> IOThrowsError Expr)
 onApproxInt f a (PFloat b) = case (asApproxInt a, asApproxInt b) of
   (Just a, Just b) -> pure . makeInt $ f a b
   _ -> throwError "Invalid argument to onInt"
@@ -426,10 +426,10 @@ asApproxInt :: Double -> Maybe Integer
 asApproxInt x
   | abs (fromIntegral x' - x) < 1e-9 = Just x'
   | otherwise = Nothing
-  where x' = round x
+  where x' = round x-}
 
-asApproxInt' (PFloat x) = asApproxInt x
-asApproxInt' _ = Nothing
+{-asApproxInt' (PFloat x) = asApproxInt x
+asApproxInt' _ = Nothing-}
 
 makeChar a = EObj $ PrimObj (PChar a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a))
@@ -452,15 +452,16 @@ makeList a = EObj $ PrimObj (PList a) $ envFromList [
   ("init", nilop $ if null a then throwError "Can't take the init of an empty list" else pure (makeList $ init a)),
   ("last", nilop $ if null a then throwError "Can't take the last of an empty list" else pure (last a)),
   ("empty", nilop $ pure (makeBool $ null a)),
-  ("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
+  --("length", nilop $ pure (makeInt $ fromIntegral $ length a)),
   ("::", unop $ \b -> pure $ makeList (b:a)),
   ("++", primUnop $ \x -> case x of
     PList b -> pure $ makeList (a++b)
     _ -> throwError "Invalid argument to ++"),
-  ("apply", primUnop $ onInt' (index a)),
+  --("apply", primUnop $ onInt' (index a)),
   ("map", unop' $ \fn env -> (,env) . makeList <$> mapM (flip (apply fn) env . (:[]) . Arg) a),
   ("filter", unop' $ \fn env -> (,env) . makeList <$> filterM (getBool <=< flip (apply fn) env . (:[]) . Arg) a)
   ]
+
 makeGen cap = do
   ioRef <- lift $ newIORef Nothing
   chan <- lift $ newBoundedChan cap
@@ -480,6 +481,7 @@ makeGen cap = do
       lift $ writeIORef done (not gotOne)
       pure (makeBool gotOne))
     ]
+
 makeHandle handle file = EObj $ PrimObj (PHandle handle file) $ envFromList [
   ("atEOF", nilop $ makeBool <$> lift (hIsEOF handle)),
   ("readChar", nilop $ do
@@ -617,7 +619,7 @@ nilop ret = prim [] (const ret)
 nilop' :: (EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
 nilop' ret = prim' [] (\map env -> ret env)
 
-floatNilop = nilop . pure . makeFloat
+--floatNilop = nilop . pure . makeFloat
 
 unop :: (Expr -> IOThrowsError Expr) -> Expr
 unop f = prim ["x"] $ \args -> f (args!"x")
@@ -658,7 +660,7 @@ stringUnop' :: (String -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
 stringUnop' f = objUnop' $ \obj env -> case getString2' obj of
   Just str -> f str env
   Nothing -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint obj
-
+{-
 onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
 onNum onInt onFloat _ = throwError "Invalid argument to onNum"
@@ -675,7 +677,7 @@ onFloat onFloat _ = throwError "Invalid argument to onFloat"
 
 onFloatToBool :: (Double -> Bool)  -> (PrimData -> IOThrowsError Expr)
 onFloatToBool onFloat (PFloat b) = pure . makeBool $ onFloat b
-onFloatToBool onFloat _ = throwError "Invalid argument to onFloatToBool"
+onFloatToBool onFloat _ = throwError "Invalid argument to onFloatToBool"-}
 
 onBool :: (Bool -> Bool) -> (PrimData -> IOThrowsError Expr)
 onBool f (PBool b) = pure . makeBool $ f b

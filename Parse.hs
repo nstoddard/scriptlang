@@ -220,7 +220,7 @@ parseVoid = keyword "void" *> pure EVoid
 
 
 parseInt = makeInt <$> integer
-parseFloat = makeFloat <$> float
+parseFloat = makeFloat <$> float <*> pure M.empty
 parseChar = makeChar <$> (char '#' *> character)
 parseString bound = makeString <$> (char bound *> many (character' [bound]) <* char bound)
 character' omit = escapeChar <|> noneOf omit

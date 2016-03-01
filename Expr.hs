@@ -11,8 +11,8 @@ import Data.Maybe
 import Data.Char
 import System.IO
 import System.IO.Unsafe
-import System.IO.Error hiding (try)
-import Control.Exception hiding (try, block)
+import System.IO.Error
+import Control.Exception hiding (try)
 import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M

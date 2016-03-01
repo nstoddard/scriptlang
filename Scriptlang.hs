@@ -134,8 +134,8 @@ import Repl
 
 main = do
   env <- startEnv
-  stdlibFile <- stdlibFilename
-  env <- runErrorT $ envNewScope =<< runFile stdlibFile env
+  --stdlibFile <- stdlibFilename
+  env <- runErrorT $ envNewScope env -- =<< runFile stdlibFile env
 
   args <- E.getArgs
   if null args then do
