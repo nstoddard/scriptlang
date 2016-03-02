@@ -1,6 +1,6 @@
 module Test where
 
-import Prelude hiding (catch)
+import Prelude
 import Data.List
 import Control.Monad
 import Control.Applicative
@@ -9,8 +9,8 @@ import Control.Monad.Error
 import Data.Maybe
 import Data.Char
 import System.IO.Unsafe
-import System.IO.Error hiding (try, catch)
-import Control.Exception hiding (try, block)
+import System.IO.Error
+import Control.Exception hiding (try)
 import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M
@@ -54,7 +54,9 @@ isLeft (Right _) = False
 isRight (Left _) = False
 isRight (Right _) = True
 fromLeft (Left x) = x
+fromLeft (Right _) = undefined
 fromRight (Right x) = x
+fromRight (Left _) = undefined
 
 testRun :: EnvStack -> String -> IO (Either String Expr)
 testRun env str = do

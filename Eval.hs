@@ -10,8 +10,8 @@ import Control.Monad.Error
 import Data.Maybe
 import Data.Char
 import System.IO.Unsafe
-import System.IO.Error hiding (try)
-import Control.Exception hiding (try, block)
+import System.IO.Error
+import Control.Exception hiding (try)
 import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M
@@ -66,7 +66,16 @@ myRawSystem = rawSystem
 maybeEvalID derefVars (EId (id,accessType)) env = do
   val <- envLookup id env
   case val of
-    Nothing -> pure Nothing
+    Nothing -> do
+      unitEnv <- get globalEnv
+      if accessType == ByVal && id `elem` envUnitNames unitEnv then do
+        let
+          (num,units) = if True{-toBase-}
+            then toBaseUnits (envUnits unitEnv) (envUnitMap unitEnv)
+              (1.0, M.singleton id 1.0)
+            else (1.0, M.singleton id 1.0)
+        pure $ Just (makeFloat num units)
+      else pure Nothing
     Just (val, accessType2) -> do
       val <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure val
@@ -206,7 +215,107 @@ eval (EAssign var val) env = do
     x -> throwError $ "Not a variable: " ++ prettyPrint x
   pure (val', env)
 eval (EValClosure expr closure) env = (,env) <$> eval' expr closure
-eval x _ = throwError $ "eval unimplemented for " ++ show x
+eval (EUnitDef utype names abbrs expr) env = do
+    val <- case expr of
+        Nothing -> pure Nothing
+        Just expr -> Just . fst <$> eval expr env
+    val' <- case val of
+        Just (EObj (PrimObj (PFloat num units) _)) -> pure $ Just (num, units)
+        Nothing -> pure Nothing
+        x -> do
+          lift $ putStrLn $ "Can't define a unit with the value " ++ prettyPrint x
+          pure Nothing
+    let
+        unitDef = UnitDef {unitType = utype,
+            unitNames = names, unitAbbrs = abbrs, unitValue = val'}
+    lift $ mapM addUnitDef (addSIPrefixes unitDef)
+    pure (EVoid, env)
+
+addUnitDef unitDef = do
+  env <- get globalEnv
+  if unitExists env unitDef then putStrLn "Unit already exists!" else do
+  globalEnv $= env {
+    envUnits = unitDef : envUnits env,
+    envUnitNames = unitNames unitDef ++ unitAbbrs unitDef ++ envUnitNames env,
+    envUnitMap = case unitValue unitDef of
+      Nothing -> envUnitMap env
+      Just value -> M.fromList (map (, value) (unitNames unitDef ++ unitAbbrs unitDef)) `M.union` envUnitMap env
+    }
+
+unitExists env unitDef = any (`elem` envUnitNames env) (unitNames unitDef ++ unitAbbrs unitDef)
+
+toBaseUnits :: UnitList -> UnitMap -> NumUnits -> NumUnits
+toBaseUnits unitList m (n, units) = M.foldl'
+    (\(aN, aUnits) (bN, bUnits) -> (aN*bN, combineUnits aUnits bUnits))
+    (n, M.empty) (M.mapWithKey toBaseUnits' units) where
+    toBaseUnits' :: Unit -> Power -> NumUnits
+    toBaseUnits' unit power = case M.lookup unit m of
+        Nothing -> (1.0, M.singleton unit' power) where
+            unit' = head . unitNames $ fromJust
+                (find (\x -> unit `elem` unitNames x || unit `elem` unitAbbrs x) unitList)
+        Just res -> toBaseUnits unitList m (((**power) *** M.map (*power)) res)
+
+convertUnits :: UnitList -> UnitMap -> NumUnits -> Units -> IOThrowsError NumUnits
+convertUnits unitList m a b
+    | aUnits == bUnits = pure (aRes*recip bRes, b)
+    | otherwise = error $ "Invalid unit conversion from " ++
+        prettyPrint aUnits ++ " to " ++ prettyPrint b ++ "."
+    where
+    (aRes, aUnits) = toBaseUnits unitList m a
+    (bRes, bUnits) = toBaseUnits unitList m (1.0, b)
+
+combineUnits :: Units -> Units -> Units
+combineUnits = M.mergeWithKey (\_ a b -> if a+b==0 then Nothing else Just (a+b)) id id
+
+addSIPrefixes unitDef = case unitType unitDef of
+    USI -> unitDef : map addSIPrefixes' siPrefixes
+    UBin -> unitDef : map addSIPrefixes' siPrefixes ++ map addSIPrefixes' binPrefixes
+    UNormal -> [unitDef]
+    where
+        addSIPrefixes' (prefix, shortPrefix, mul) = UnitDef {
+            unitType = UNormal,
+            unitNames = (prefix++) <$> unitNames unitDef,
+            unitAbbrs = (shortPrefix++) <$> unitAbbrs unitDef,
+            unitValue = Just (mul, M.singleton (head $ unitNames unitDef) 1.0)
+        }
+
+siPrefixes = [
+    ("yotta", "Y", 1000**8),
+    ("zetta", "Z", 1000**7),
+    ("exa"  , "E", 1000**6),
+    ("peta" , "P", 1000**5),
+    ("tera" , "T", 1000**4),
+    ("giga" , "G", 1000**3),
+    ("mega" , "M", 1000**2),
+    ("kilo" , "k", 1000**1),
+    ("hecto", "h", 100),
+    ("deca" , "da", 10),
+
+    ("deci" , "d", 0.1),
+    ("centi", "c", 0.01),
+    ("milli", "m", 1000**(-1)),
+    ("micro", "mu",1000**(-2)),
+    ("nano" , "n", 1000**(-3)),
+    ("pico" , "p", 1000**(-4)),
+    ("femto", "f", 1000**(-5)),
+    ("atto" , "a", 1000**(-6)),
+    ("zepto", "z", 1000**(-7)),
+    ("yocto", "y", 1000**(-8))
+    ]
+binPrefixes = [
+    ("yobi", "Yi", 1024**8),
+    ("zebi", "Zi", 1024**7),
+    ("exbi", "Ei", 1024**6),
+    ("pebi", "Pi", 1024**5),
+    ("tebi", "Ti", 1024**4),
+    ("gibi", "Gi", 1024**3),
+    ("mebi", "Mi", 1024**2),
+    ("kibi", "Ki", 1024**1)
+    ]
+
+
+
+--eval x _ = throwError $ "eval unimplemented for " ++ show x
 
 
 --Like regular eval, but allows you to redefine things
@@ -361,12 +470,12 @@ makeInt a = makeFloat (fromIntegral a) M.empty
 
 makeFloat :: Double -> Units -> Expr
 makeFloat a aUnits = EObj $ PrimObj (PFloat a aUnits) $ envFromList [
-  ("toString", nilop $ pure (makeString $ prettyPrint a))
-  {-("+", primUnop $ onFloat (a+)),
-  ("-", primUnop $ onFloat (a-)),
-  ("*", primUnop $ onFloat (a*)),
-  ("apply", primUnop $ onFloat (a*)),
-  ("/", primUnop $ onFloat (a/)),
+  ("toString", nilop $ pure (makeString $ prettyPrint a)),
+  ("+", primUnop $ onFloatSameUnits (+) a'),
+  ("-", primUnop $ onFloatSameUnits (-) a'),
+  ("*", primUnop $ onFloatCombineUnits (*) a'),
+  ("apply", primUnop $ onFloatCombineUnits (*) a')
+  {-("/", primUnop $ onFloat (a/)),
   ("%", primUnop $ onFloat (fmod a)),
   ("^", primUnop $ onFloat (a**)),
   (">", primUnop $ onFloatToBool (a>)),
@@ -413,7 +522,7 @@ makeFloat a aUnits = EObj $ PrimObj (PFloat a aUnits) $ envFromList [
   ("div", primUnop $ onApproxInt (div) a),
   ("gcd", primUnop $ onApproxInt (gcd) a),
   ("lcm", primUnop $ onApproxInt (lcm) a)-}
-  ]
+  ] where a' = PFloat a aUnits
 
 {-onApproxInt :: (Integer -> Integer -> Integer) -> Double -> (PrimData -> IOThrowsError Expr)
 onApproxInt f a (PFloat b) = case (asApproxInt a, asApproxInt b) of
@@ -524,6 +633,7 @@ desugar (EClone x) = EClone (desugar x)
 desugar (EObj x) = EObj $ desugarObj x
 desugar (EIf a b c) = EIf (desugar a) (desugar b) (desugar c)
 desugar EUnknown = EUnknown
+desugar (EUnitDef a b c x) = EUnitDef a b c (desugar <$> x)
 
 desugarObj :: Obj -> Obj
 desugarObj (Obj env) = Obj env
@@ -682,3 +792,15 @@ onFloatToBool onFloat _ = throwError "Invalid argument to onFloatToBool"-}
 onBool :: (Bool -> Bool) -> (PrimData -> IOThrowsError Expr)
 onBool f (PBool b) = pure . makeBool $ f b
 onBool f _ = throwError "Invalid argument to onBool"
+
+
+onFloatSameUnits :: (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)
+onFloatSameUnits f (PFloat a aUnits) (PFloat b bUnits)
+  | aUnits == bUnits = pure $ makeFloat (f a b) aUnits
+  | otherwise = throwError "Incompatible units"
+onFloatSameUnits _ _ _ = throwError "Invalid argument to onFloatSameUnits"
+
+onFloatCombineUnits :: (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)
+onFloatCombineUnits f (PFloat a aUnits) (PFloat b bUnits)
+  = pure $ makeFloat (f a b) (combineUnits aUnits bUnits)
+onFloatCombineUnits _ _ _ = throwError "Invalid argument to onFloatCombineUnits"

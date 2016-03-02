@@ -42,11 +42,17 @@ data EnvStack = EnvStack [IORef Env]
 type UnitList = [UnitDef]
 type UnitMap = Map String NumUnits
 
+-- TODO: is there a good way to do this without making it global?
 data GlobalEnv = GlobalEnv {
   envUnits :: UnitList,
+  -- TODO: is this needed?
   envUnitNames :: [String],
   envUnitMap :: UnitMap
 }
+
+{-# NOINLINE globalEnv #-}
+globalEnv :: IORef GlobalEnv
+globalEnv = unsafePerformIO $ newIORef $ GlobalEnv [] [] M.empty
 
 getEnvs :: EnvStack -> IO [Env]
 getEnvs (EnvStack []) = pure []
@@ -122,8 +128,26 @@ data UnitDef = UnitDef {
     unitNames :: [String],
     unitAbbrs :: [String],
     unitValue :: Maybe NumUnits
-} deriving (Show)
-  
+} deriving (Show) 
+ 
+
+
+prettyUnit (unit, 1) = pretty unit
+prettyUnit (unit, n) = pretty unit <//> pretty "^" <//> pretty n
+
+prettyUnits units
+    | not (null pos) && length neg == 1 = P.hsep (map prettyUnit pos) <//>
+        pretty "/" <//> prettyUnit (second negate $ head neg)
+    | otherwise = P.hsep (map prettyUnit units)
+    where
+        (pos, neg) = partition ((>0).snd) units
+
+instance Pretty Units where
+    pretty units
+        | M.null units = pretty "(unitless)"
+        | otherwise = prettyUnits (M.toList units)
+
+
 
 data PrimData = PFloat Double Units | PBool Bool | PChar Char | PList [Expr] |
   PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr)) | PHandle Handle String
@@ -266,6 +290,7 @@ instance Pretty Expr where
   pretty EUnknown = pretty "_"
   pretty (EValClosure expr env) = pretty expr
   pretty (EExec prog args) = pretty prog </> hsep (map pretty args)
+  pretty (EUnitDef {}) = pretty "TODO"
 
 instance Pretty Fn where
   pretty (Prim _) = pretty "<prim>"
@@ -347,6 +372,7 @@ instance Show Expr where
   show (EObj x)            = "(EOBj " ++ show x ++ ")"
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
   show EUnknown            = "EUnknown"
+  show (EUnitDef a b c d)  = "(EUnitDef " ++ show a ++ " " ++ show b ++ " " ++ show c ++ " " ++ show d ++ ")"
 
 
 isOperator = not . isAlphaNum . head

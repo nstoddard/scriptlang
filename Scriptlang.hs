@@ -92,7 +92,7 @@ module Main where
     I would've liked to add operators like "+" to add 2 functions together, but that wouldn't work with the current language design and would require major changes, if it could be done at all.
 -}
 
-import Prelude hiding (catch)
+import Prelude
 import Data.List
 import Control.Monad
 import Control.Applicative
@@ -101,8 +101,8 @@ import Control.Monad.Error
 import Data.Maybe
 import Data.Char
 import System.IO.Unsafe
-import System.IO.Error hiding (try, catch)
-import Control.Exception hiding (try, block)
+import System.IO.Error hiding (catch)
+import Control.Exception hiding (try)
 import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M
