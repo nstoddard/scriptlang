@@ -492,17 +492,19 @@ makeFloat a aUnits = EObj $ PrimObj (PFloat a aUnits) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a)),
   ("+", primUnop $ onFloatSameUnits (+) a'),
   ("-", primUnop $ onFloatSameUnits (-) a'),
-  ("*", primUnop $ onFloatCombineUnits (*) a'),
-  ("apply", primUnop $ onFloatCombineUnits (*) a')
-  {-("/", primUnop $ onFloat (a/)),
-  ("%", primUnop $ onFloat (fmod a)),
+  ("*", primUnop $ onFloatCombineUnits combineUnits (*) a'),
+  ("apply", primUnop $ onFloatCombineUnits combineUnits (*) a'),
+  ("/", primUnop $ onFloatCombineUnits
+    (\a b -> combineUnits a (negate <$> b)) (/) a'),
+  ("div", primUnop $ onApproxIntUnitless (div) a'),
+  ("==", primUnop $ onFloatToBoolSameUnits (==) a'),
+  (">", primUnop $ onFloatToBoolSameUnits (>) a'),
+  ("<", primUnop $ onFloatToBoolSameUnits (<) a'),
+  (">=", primUnop $ onFloatToBoolSameUnits (>=) a'),
+  ("<=", primUnop $ onFloatToBoolSameUnits (<=) a'),
+  ("!=", primUnop $ onFloatToBoolSameUnits (/=) a')
+  {-("%", primUnop $ onFloat (fmod a)),
   ("^", primUnop $ onFloat (a**)),
-  (">", primUnop $ onFloatToBool (a>)),
-  ("<", primUnop $ onFloatToBool (a<)),
-  (">=", primUnop $ onFloatToBool (a>=)),
-  ("<=", primUnop $ onFloatToBool (a<=)),
-  ("==", primUnop $ onFloatToBool (a==)),
-  ("!=", primUnop $ onFloatToBool (a/=)),
   ("abs", floatNilop $ abs a),
   ("sign", floatNilop $ signum a),
   ("floor", nilop . pure . makeInt $ floor a),
@@ -538,14 +540,15 @@ makeFloat a aUnits = EObj $ PrimObj (PFloat a aUnits) $ envFromList [
   ("until", primUnop $ \x -> case (asApproxInt a, asApproxInt' x) of
     (Just a, Just b) -> pure $ makeList $ map makeInt [a..b-1]
     _ -> throwError "Invalid argument to 'to'"),
-  ("div", primUnop $ onApproxInt (div) a),
   ("gcd", primUnop $ onApproxInt (gcd) a),
   ("lcm", primUnop $ onApproxInt (lcm) a)-}
   ] where a' = PFloat a aUnits
 
-{-onApproxInt :: (Integer -> Integer -> Integer) -> Double -> (PrimData -> IOThrowsError Expr)
-onApproxInt f a (PFloat b) = case (asApproxInt a, asApproxInt b) of
-  (Just a, Just b) -> pure . makeInt $ f a b
+onApproxIntUnitless :: (Integer -> Integer -> Integer) -> PrimData -> (PrimData -> IOThrowsError Expr)
+onApproxIntUnitless f (PFloat a aUnits) (PFloat b bUnits) = case (asApproxInt a, asApproxInt b) of
+  (Just a, Just b) -> if M.null aUnits && M.null bUnits
+    then pure . makeInt $ f a b
+    else throwError "Invalid argument to onInt"
   _ -> throwError "Invalid argument to onInt"
 
 
@@ -554,7 +557,7 @@ asApproxInt :: Double -> Maybe Integer
 asApproxInt x
   | abs (fromIntegral x' - x) < 1e-9 = Just x'
   | otherwise = Nothing
-  where x' = round x-}
+  where x' = round x
 
 {-asApproxInt' (PFloat x) = asApproxInt x
 asApproxInt' _ = Nothing-}
@@ -802,11 +805,13 @@ onInt' f _ = throwError "Invalid argument to onInt'"
 
 onFloat :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onFloat onFloat (PFloat b) = pure . makeFloat $ onFloat b
-onFloat onFloat _ = throwError "Invalid argument to onFloat"
+onFloat onFloat _ = throwError "Invalid argument to onFloat"-}
 
-onFloatToBool :: (Double -> Bool)  -> (PrimData -> IOThrowsError Expr)
-onFloatToBool onFloat (PFloat b) = pure . makeBool $ onFloat b
-onFloatToBool onFloat _ = throwError "Invalid argument to onFloatToBool"-}
+onFloatToBoolSameUnits :: (Double -> Double -> Bool) -> PrimData -> (PrimData -> IOThrowsError Expr)
+onFloatToBoolSameUnits onFloat (PFloat a aUnits) (PFloat b bUnits)
+  | aUnits == bUnits = pure . makeBool $ onFloat a b
+  | otherwise = throwError "Invalid argument to onFloatToBool"
+onFloatToBoolSameUnits onFloat _ _ = throwError "Invalid argument to onFloatToBool"
 
 onBool :: (Bool -> Bool) -> (PrimData -> IOThrowsError Expr)
 onBool f (PBool b) = pure . makeBool $ f b
@@ -819,7 +824,7 @@ onFloatSameUnits f (PFloat a aUnits) (PFloat b bUnits)
   | otherwise = throwError "Incompatible units"
 onFloatSameUnits _ _ _ = throwError "Invalid argument to onFloatSameUnits"
 
-onFloatCombineUnits :: (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)
-onFloatCombineUnits f (PFloat a aUnits) (PFloat b bUnits)
-  = pure $ makeFloat (f a b) (combineUnits aUnits bUnits)
-onFloatCombineUnits _ _ _ = throwError "Invalid argument to onFloatCombineUnits"
+onFloatCombineUnits :: (Units -> Units -> Units) -> (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)
+onFloatCombineUnits combine f (PFloat a aUnits) (PFloat b bUnits)
+  = pure $ makeFloat (f a b) (combine aUnits bUnits)
+onFloatCombineUnits _ _ _ _ = throwError "Invalid argument to onFloatCombineUnits"

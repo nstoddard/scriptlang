@@ -100,6 +100,7 @@ repl env = do
           repl env'
 
 
+-- TODO: this doesn't update the environment!
 runFile :: String -> EnvStack -> IOThrowsError EnvStack
 runFile filename env = do
   exists <- lift $ doesFileExist filename
