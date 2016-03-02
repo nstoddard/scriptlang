@@ -165,22 +165,6 @@ data Expr =
   EUnitDef UnitType [String] [String] (Maybe Expr) |
   EUnknown
 
-exprEq :: Expr -> Expr -> IO Bool
-exprEq EVoid EVoid = pure True
-exprEq (EId a) (EId b) = pure (a==b)
-exprEq (EObj a) (EObj b) = objEq a b
-exprEq _ _ = pure False
-
-objEq :: Obj -> Obj -> IO Bool
-objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
-  -- TODO: this isn't right for units
-  (PFloat a aUnits, PFloat b bUnits) -> pure (a==b && aUnits==bUnits)
-  (PBool a, PBool b) -> pure (a==b)
-  (PChar a, PChar b) -> pure (a==b)
-  (PList as, PList bs) -> and <$> sequence (exprEq <$> as <*> bs)
-  (_,_) -> pure False
-objEq _ _ = pure False
-
 fromEList :: Expr -> [Expr]
 fromEList (EObj (PrimObj (PList xs) _)) = xs
 fromEList xs = error $ "Internal error: not a list: " ++ show xs

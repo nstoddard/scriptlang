@@ -56,7 +56,7 @@ unit millenium/millenia = 1000 years
 
 /* The kilogram is defined separately from the gram because it's technically
    the SI base unit, not the gram. */
-/*unit kilogram/kilograms(kg)
+unit kilogram/kilograms(kg)
 si-unit gram/grams(g) = 0.001 kg
 
 si-unit ampere/amperes/amp/amps(A)
@@ -96,7 +96,6 @@ si-unit electronvolt/electronvolts(eV) = 1.6*10^(-19) J
 
 earthGravity = 9.8 m/s^2
 
-pi = 3.141592653589793238462643383279
 
 /* This file doesn't include temperature units because conversions between
    they require addition, which isn't supported in unit conversions.
@@ -104,4 +103,3 @@ pi = 3.141592653589793238462643383279
 
 bin-unit bit/bits(b)
 bin-unit byte/bytes(B) = 8 bits
-*/

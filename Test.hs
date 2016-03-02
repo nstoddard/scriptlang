@@ -76,8 +76,10 @@ testEqual a b = do
   exprB <- testRun env b
   case (exprA, exprB) of
     (Right exprA, Right exprB) -> do
-      eq <- exprEq exprA exprB
-      assertBool ("Expected " ++ a ++ " to eval to " ++ b ++ " but got " ++ prettyPrint exprA) eq
+      eq <- runErrorT $ exprEq exprA exprB
+      case eq of
+        Left err -> assertFailure $ "Failed to compare for equality: `" ++ a ++ "` and `" ++ b ++ "`; got error " ++ err
+        Right eq -> assertBool ("Expected " ++ a ++ " to eval to " ++ b ++ " but got " ++ prettyPrint exprA) eq
     (Right _, Left errB) -> assertFailure $ "Failed to eval `" ++ b ++ "`; got error " ++ errB
     (Left errA, Right _) -> assertFailure $ "Failed to eval `" ++ a ++ "`; got error " ++ errA
     (Left errA, Left errB) -> assertFailure $ "Failed to eval `" ++ a ++ "` and `" ++ b ++ "`; got errors " ++ errA ++ " and " ++ errB
@@ -117,7 +119,15 @@ objTests = TestLabel "obj" $ TestList [
   testEq "(x = {a=5}; y = new x {b=4}; x.a <- 10; y.a)" "10"-}
   ]
 
-allTests = TestList [arithTests, varTests, fnTests, objTests]
+-- These test physical units like meters; the name doesn't mean what 'unit test' normally means
+unitTests = TestLabel "unit" $ TestList [
+  testEq "5 meters" "500 cm",
+  testEq "5 meters + 500 cm" "10 meters",
+  testEq "5 m * 2 m" "10 m^2",
+  testEq "5 m / 2 m" "2.5"
+  ]
+
+allTests = TestList [arithTests, varTests, fnTests, objTests, unitTests]
 
 runTests = getTestEnv >> runTestTT allTests
 

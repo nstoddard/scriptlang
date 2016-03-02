@@ -828,10 +828,35 @@ onFloat :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
 onFloat onFloat (PFloat b) = pure . makeFloat $ onFloat b
 onFloat onFloat _ = throwError "Invalid argument to onFloat"-}
 
+convertPFloat (PFloat x xUnits) yUnits = do
+  unitEnv <- get globalEnv
+  (num,units) <- convertUnits (envUnits unitEnv) (envUnitMap unitEnv) (x, xUnits) yUnits
+  pure $ PFloat num units
+
+
+exprEq :: Expr -> Expr -> IOThrowsError Bool
+exprEq EVoid EVoid = pure True
+exprEq (EId a) (EId b) = pure (a==b)
+exprEq (EObj a) (EObj b) = objEq a b
+exprEq _ _ = pure False
+
+objEq :: Obj -> Obj -> IOThrowsError Bool
+objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
+  (PFloat a aUnits, b@(PFloat {})) -> do
+    PFloat b bUnits <- convertPFloat b aUnits
+    pure (a==b && aUnits==bUnits)
+  (PBool a, PBool b) -> pure (a==b)
+  (PChar a, PChar b) -> pure (a==b)
+  (PList as, PList bs) -> and <$> sequence (exprEq <$> as <*> bs)
+  (_,_) -> pure False
+objEq _ _ = pure False
+
+
 onFloatToBoolSameUnits :: (Double -> Double -> Bool) -> PrimData -> (PrimData -> IOThrowsError Expr)
-onFloatToBoolSameUnits onFloat (PFloat a aUnits) (PFloat b bUnits)
-  | aUnits == bUnits = pure . makeBool $ onFloat a b
-  | otherwise = throwError "Invalid argument to onFloatToBool"
+onFloatToBoolSameUnits onFloat (PFloat a aUnits) b = do
+  PFloat b bUnits <- convertPFloat b aUnits
+  if aUnits == bUnits then pure . makeBool $ onFloat a b
+  else throwError "Invalid argument to onFloatToBool"
 onFloatToBoolSameUnits onFloat _ _ = throwError "Invalid argument to onFloatToBool"
 
 onBool :: (Bool -> Bool) -> (PrimData -> IOThrowsError Expr)
@@ -840,9 +865,10 @@ onBool f _ = throwError "Invalid argument to onBool"
 
 
 onFloatSameUnits :: (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)
-onFloatSameUnits f (PFloat a aUnits) (PFloat b bUnits)
-  | aUnits == bUnits = pure $ makeFloat (f a b) aUnits
-  | otherwise = throwError "Incompatible units"
+onFloatSameUnits f (PFloat a aUnits) b = do
+  PFloat b bUnits <- convertPFloat b aUnits
+  if aUnits == bUnits then pure $ makeFloat (f a b) aUnits
+  else throwError "Incompatible units"
 onFloatSameUnits _ _ _ = throwError "Invalid argument to onFloatSameUnits"
 
 onFloatCombineUnits :: (Units -> Units -> Units) -> (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)

@@ -77,9 +77,9 @@ parseUnitDef = do
 
 parseNonStatement = parseExec <|> parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
-parseNonIf = buildExpressionParser opTable (parseClone <|> parseNew' <|> parseNonWithExpr)
+parseNonIf = buildExpressionParser opTable2 (parseClone <|> parseNew' <|> parseNonWithExpr)
 parseNonWithExpr = try parseFn <|> parseFnApp
-parseNonFnAppExpr = parseSingleTokenExpr
+parseNonFnAppExpr = buildExpressionParser opTable1 $ parseSingleTokenExpr
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
@@ -105,8 +105,11 @@ parseNew' = do
 
 parseMakeObj = EMakeObj <$> block '{' '}'
 
+ops2 = [
+  "^"
+  ]
+
 ops = [
-  "^",
   "*/%",
   "+-",
   ":",
@@ -117,7 +120,8 @@ ops = [
   "?\\~@#$"
   ]
 
-opTable = map (concatMap $ op False) ops ++ map (concatMap $ op True) ops
+opTable1 = map (concatMap $ op False) ops2
+opTable2 = map (concatMap $ op False) ops ++ map (concatMap $ op True) (ops2++ops)
 
 op reqSpaces startChar = [binopL startChar reqSpaces, binopR startChar reqSpaces]
 binopL startChar reqSpaces = Infix (try $ do
@@ -130,7 +134,7 @@ binopR startChar reqSpaces = Infix (try $ do
   when reqSpaces someWhitespace
   name <- operator startChar True
   when reqSpaces someWhitespace
-  pure (\a b -> EFnApp (EMemberAccess a name) [Arg b]) --We swap a and b here intentionally
+  pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
   ) AssocRight
 
 
