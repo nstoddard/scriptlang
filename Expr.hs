@@ -85,21 +85,9 @@ envHead (EnvStack (x:_)) = lift (get x)
 
 
 
-
 --The third parameter isn't just a Value because it should only be executed if there isn't an error.
 envDefine :: String -> EnvStack -> IOThrowsError (Value,Expr) -> IOThrowsError (Expr,EnvStack)
 envDefine id env@(EnvStack (x:xs)) f = do
-  x' <- lift $ get x
-  case M.lookup id x' of
-    Nothing -> do
-      (val,ret) <- f
-      lift $ x $= M.insert id val x'
-      pure (ret, env)
-    Just _ -> throwError $ "Can't reassign identifier: " ++ id
-
---The third parameter isn't just a Value because it should only be executed if there isn't an error.
-envRedefine :: String -> EnvStack -> IOThrowsError (Value,Expr) -> IOThrowsError (Expr,EnvStack)
-envRedefine id env@(EnvStack (x:xs)) f = do
   x' <- lift $ get x
   (val,ret) <- f
   lift $ x $= M.insert id val x'

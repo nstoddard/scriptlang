@@ -237,7 +237,7 @@ eval (EValClosure expr closure) env = (,env) <$> eval' expr closure
 eval (EUnitDef utype names abbrs expr) env = do
     val <- case expr of
         Nothing -> pure Nothing
-        Just expr -> Just . fst <$> eval expr env
+        Just expr -> Just <$> eval' expr env
     val' <- case val of
         Just (EObj (PrimObj (PFloat num units) _)) -> pure $ Just (num, units)
         Nothing -> pure Nothing
@@ -341,25 +341,11 @@ binPrefixes = [
     ]
 
 
-
---eval x _ = throwError $ "eval unimplemented for " ++ show x
-
-
---Like regular eval, but allows you to redefine things
--- TODO: get rid of this! Everywhere should be treated like the REPL currently is
-replEval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
-replEval (EDef id val) env = envRedefine id env $ do
-  (val,_) <- replEval val env
-  val' <- lift $ (,ByVal) . EVar <$> newIORef val
-  pure (val', val)
-replEval expr env = eval expr env
-
 apply f args = eval' (EFnApp f args)
 call obj f args = eval' (EFnApp (EMemberAccess (EObj obj) f) args)
 evalApply obj args = eval (EFnApp (EMemberAccess (EObj obj) "apply") args)
 
 eval' expr env = fst <$> eval expr env
-replEval' expr env = fst <$> replEval expr env
 
 getStr expr env = case getString' expr of
   Just str -> pure [str]
