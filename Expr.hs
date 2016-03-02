@@ -83,13 +83,8 @@ envHead :: EnvStack -> IOThrowsError Env
 envHead (EnvStack []) = throwError "Can't drop empty EnvStack!"
 envHead (EnvStack (x:_)) = lift (get x)
 
-envLookup :: String -> EnvStack -> IOThrowsError (Maybe Value)
-envLookup id (EnvStack []) = pure Nothing
-envLookup id (EnvStack (x:xs)) = do
-  x' <- lift $ get x
-  case M.lookup id x' of
-    Nothing -> envLookup id (EnvStack xs)
-    Just res -> pure (Just res)
+
+
 
 --The third parameter isn't just a Value because it should only be executed if there isn't an error.
 envDefine :: String -> EnvStack -> IOThrowsError (Value,Expr) -> IOThrowsError (Expr,EnvStack)

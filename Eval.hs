@@ -42,8 +42,9 @@ isNilop' _ = False
 evalID derefVars (EId (id,accessType)) notFoundMsg env = do
   val <- envLookup id env
   case val of
-    Nothing -> throwError $ notFoundMsg ++ id
-    Just (val, accessType2) -> do
+    EnvNotFound -> throwError $ notFoundMsg ++ id
+    EnvFoundUnit val -> error "How should I handle this case (1)?"
+    EnvFound (val, accessType2) -> do
       val <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure val
         (ByVal, ByName) -> eval' val env
@@ -63,20 +64,36 @@ lookupID id = evalID' True (EId (id,ByVal)) "Identifier not found: "
 --  where parenify str = if any isSpace str then "\"" ++ str ++ "\"" else str
 myRawSystem = rawSystem
 
+
+
+
+data EnvResult = EnvFound Value | EnvFoundUnit Expr | EnvNotFound
+  deriving (Show)
+
+envLookup :: String -> EnvStack -> IOThrowsError EnvResult
+envLookup id (EnvStack []) = do
+  unitEnv <- get globalEnv
+  if id `elem` envUnitNames unitEnv then do
+    let (num,units) = (1.0, M.singleton id 1.0)
+    pure $ EnvFoundUnit $ makeFloat num units
+  else pure EnvNotFound
+envLookup id (EnvStack (x:xs)) = do
+  x' <- lift $ get x
+  case M.lookup id x' of
+    Nothing -> envLookup id (EnvStack xs)
+    Just res -> pure (EnvFound res)
+
+
+
+
 maybeEvalID derefVars (EId (id,accessType)) env = do
   val <- envLookup id env
   case val of
-    Nothing -> do
+    EnvNotFound -> pure Nothing
+    EnvFoundUnit (EObj (PrimObj (PFloat num units) _)) -> do
       unitEnv <- get globalEnv
-      if accessType == ByVal && id `elem` envUnitNames unitEnv then do
-        let
-          (num,units) = if True{-toBase-}
-            then toBaseUnits (envUnits unitEnv) (envUnitMap unitEnv)
-              (1.0, M.singleton id 1.0)
-            else (1.0, M.singleton id 1.0)
-        pure $ Just (makeFloat num units)
-      else pure Nothing
-    Just (val, accessType2) -> do
+      pure (Just $ uncurry makeFloat $ toBaseUnits (envUnits unitEnv) (envUnitMap unitEnv) (num,units))
+    EnvFound (val, accessType2) -> do
       val <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure val
         (ByVal, ByName) -> eval' val env
@@ -162,16 +179,18 @@ eval (EFnApp fn args) env = do
         (Arg (EId (id,ByVal)):args) -> do
           val <- envLookup id =<< lift (envStackFromEnv fnEnv)
           case val of
-            Just (val,ByVal) -> eval (EFnApp val args) env
-            Nothing -> evalFnApp
+            EnvFound (val,ByVal) -> eval (EFnApp val args) env
+            EnvFoundUnit val -> evalFnApp
+            EnvNotFound -> evalFnApp
         _ -> evalFnApp
     EObj obj -> case args of
       [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
       args'@(Arg (EId (id,ByVal)):args) -> do
         val <- envLookup id env
         case val of
-          Just val -> evalApply obj args' env
-          Nothing -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
+          EnvFound val -> evalApply obj args' env
+          EnvFoundUnit val -> evalApply obj args' env
+          EnvNotFound -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
       --args -> throwError ("Invalid function: " ++ prettyPrint (EObj obj))
     EVoid -> case args of

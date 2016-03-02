@@ -44,7 +44,7 @@ import Eval
 -- TODO: does Cabal have a way to avoid this?
 release = False
 --If true, print debug info about expressions
-debug = True
+debug = False
 
 {-debugging env = do
   debug <- lookupID "debug" env
