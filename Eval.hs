@@ -252,7 +252,8 @@ eval (EUnitDef utype names abbrs expr) env = do
 
 addUnitDef unitDef = do
   env <- get globalEnv
-  if unitExists env unitDef then putStrLn ("Unit already exists: " ++ show unitDef {-++ "; " ++ show env-}) else do
+  -- TODO: don't silently ignore this
+  if unitExists env unitDef then pure () {-putStrLn ("Unit already exists: " ++ show unitDef-} {-++ "; " ++ show env-}{-)-} else do
   globalEnv $= env {
     envUnits = unitDef : envUnits env,
     envUnitNames = unitNames unitDef ++ unitAbbrs unitDef ++ envUnitNames env,

@@ -1,0 +1,181 @@
+//debug = false
+
+pi = 3.141592653589793238462643383279
+tau = 2*pi
+
+sumUpTo = n -> (n * (n+1)) div 2
+fac = n -> if (n==0) 1 else n * fac (n-1)
+fib = n -> (
+  a = 0
+  b = 1
+  i = 0
+  while (i < n) (
+    tmp = a
+    a <- a+b
+    b <- tmp
+    i <- i+1
+  )
+  a
+)
+
+id = x -> x
+
+list = xs* -> xs
+
+while = ~cond ~f -> if cond (f; while ~cond ~f)
+
+compose = a b -> x -> a (b (x))
+
+println 'Scriptlang version 0.1'
+pwd = -> println (wd)
+pwd
+
+read = file -> withGen (yield -> withFile file "r" (file -> while (!(file.atEOF)) (yield (file.readChar))))
+write = file gen -> withFile file "w" (file -> while (gen.moveNext) (file.writeChar (gen.cur)))
+
+dupEvery = gen -> withGen (yield -> while (gen.moveNext) (yield (gen.cur); yield (gen.cur)))
+
+
+
+
+// The si- prefix automatically generates prefixes like kilo-
+si-unit meter/meters(m)
+unit inch/inches(in) = 2.54 cm
+unit foot/feet(ft) = 12 in
+unit yard/yards(yd) = 3 ft
+unit mile/miles(mi) = 5280 ft
+
+si-unit second/seconds(s)
+unit minute/minutes(min) = 60 seconds
+unit hour/hours(hr) = 60 minutes
+unit day/days(d) = 24 hours
+unit year/years(yr) = 365 days
+unit decade/decades = 10 years
+unit century/centuries = 100 years
+unit millenium/millenia = 1000 years
+
+/* The kilogram is defined separately from the gram because it's technically
+   the SI base unit, not the gram. */
+unit kilogram/kilograms(kg)
+si-unit gram/grams(g) = 0.001 kg
+
+si-unit ampere/amperes/amp/amps(A)
+si-unit mole/moles(mol)
+si-unit candela/candelas(cd)
+si-unit hertz(Hz) = 1/s
+si-unit newton/newtons(N) = kg*m/s^2
+si-unit pascal/pascals(Pa) = N/m^2
+si-unit joule/joules(J) = N*m
+si-unit watt/watts(W) = J/s
+si-unit coulomb/coulombs(C) = s*A
+si-unit volt/volts(V) = W/A
+si-unit farad/farads(F) = C/V
+si-unit ohm/ohms = V/A
+si-unit siemens(S) = A/V
+si-unit weber/webers(Wb) = V*s
+si-unit tesla/teslas(T) = Wb/m^2
+si-unit henry/henries(H) = Wb/A
+
+lightSpeed = 299792458 m/s
+unit lightYear/lightYears = lightSpeed * 1 year
+si-unit parsec/parsecs(pc) = 3.0857*10^16 m
+unit astronomicalUnit/astronomicalUnits(AU) = 1.4960*10^11 m
+
+unit pound/pounds(lb/lbs) = 0.45359 kg
+
+unit mph = mi/hr
+unit kph = km/hr
+
+
+unit acre/acres = 43560 ft^2
+si-unit hectare/hectares(ha) = 10000 m^2
+
+si-unit liter/litre/liters/litres(L) = 1 dm^3
+
+si-unit electronvolt/electronvolts(eV) = 1.6*10^(-19) J
+
+earthGravity = 9.8 m/s^2
+
+
+/* This file doesn't include temperature units because conversions between
+   they require addition, which isn't supported in unit conversions.
+*/
+
+bin-unit bit/bits(b)
+bin-unit byte/bytes(B) = 8 bits
+
+
+
+
+
+unit thousand/thousands = 1000
+unit million/millions = 1000 thousand
+unit billion/billions = 1000 million
+unit trillion/trillions = 1000 billion
+
+unit dollar/dollars
+unit cent/cents = 0.01 dollar
+
+double = x -> x*2
+square = x -> x*x
+sqrt = x -> x^(1/2)
+//logBase = $base, x => ln x / ln base
+//lg = $x => logBase 2 x
+
+unit word/words
+unit month/months = 1/12 year
+
+e = 2.71828182845904523536028747135266249775724709369995
+
+unit story/stories
+unit game/games
+unit shift/shifts
+unit week/weeks = 7 days
+unit person/people
+unit cookie/cookies
+
+/*f = $x => (sin x)^2 + (cos x)^2
+false = $t => $f => f
+true = $t => $f => t
+id = $x => x
+isZero = $n => (n ($x => false)) true
+succ = $n => $s => $z => s ((n s) z)
+plus = $n => $m => (n succ) m
+zero = false
+one = succ zero
+two = succ one
+times = $n => $m => (m (plus n)) zero
+power = $n => $m => (m (times n)) one
+if = $cond => $t => $f => (cond t) f
+and = $p => $q => (p q) p
+or = $p => $q => (p p) q
+not = $p => $a => $b => (p b) a
+pair = $fst => $snd => $bool => (bool fst) snd
+fst = $pair => pair true
+snd = $pair => pair false
+nextPair = $p => (pair (succ (fst p))) (fst p)
+pred = $n => snd ((n nextPair) ((pair zero) zero))
+minus = $n => $m => (m pred) n
+greq = $n => $m => isZero ((minus m) n)
+equals = $n => $m => (and ((greq n) m)) ((greq m) n)
+fix = $f => ($x => f ($y => (x x) y)) ($x => f ($y => (x x) y))
+fac = $f => $n => ((isZero n) one) ((times n) ((f f) (pred n)))
+fac2 = $n => ((isZero n) one) ((times n) (fac2 (pred n)))
+three = succ two
+four = succ three
+five = succ four
+six = succ five
+seven = succ six
+eight = succ seven
+unit radian/radians = 1
+unit degree/degrees = pi/180 radians
+unit bitcoin/bitcoins
+circleArea = $r => pi r^2
+unit sample/samples
+x = 3.14
+x=3.14
+unit octet/octets = byte
+unit Mbps = Mb/s
+unit pixel/pixels
+res = 2.5 ft / 60000 ft
+*/

@@ -6,6 +6,7 @@ cabal-version: >=1.2
 
 extra-source-files:
 data-files:
+    stdlib.txt
 
 executable scriptlang
     main-is: Scriptlang.hs

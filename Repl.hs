@@ -23,7 +23,7 @@ import qualified System.IO.Strict as Strict
 import Data.Foldable (asum, toList)
 import Debug.Trace
 import System.Process
-import qualified System.FilePath as P
+import qualified System.FilePath as FP
 import System.IO
 import Test.HUnit
 
@@ -40,6 +40,7 @@ import Expr
 import Parse
 import Eval
 
+import Paths_scriptlang
 
 -- TODO: does Cabal have a way to avoid this?
 release = False
@@ -63,11 +64,11 @@ parseInput srcName input parser desugar = case parse (parseWholeInput parser) sr
   Left err -> throwError ("Syntax error " ++ show err)
   Right expr -> pure $ desugar expr
 
-stdlibFilename = dataFile "stdlib.script"
-historyFilename = dataFile "history"
+stdlibFilename = getDataFileName "stdlib.txt"
+historyFilename = dataFile "history.txt"
+defsFilename = dataFile "defs.txt"
 
-dataFile filename = if not release then pure filename
-  else (P.</> filename) <$> getAppUserDataDirectory "scriptlang"
+dataFile filename = (FP.</> filename) <$> getAppUserDataDirectory "scriptlang"
 
 
 debugPrint expr = when debug $ lift $ do
@@ -92,15 +93,21 @@ repl env = do
       res <- handleCtrlC (Left "Interrupted") $ lift $ runErrorT (replEval expr env)
       case res of
         Left err -> lift (putStrLn err) >> repl env
-        Right (EVoid, env') -> repl env'
-        Right (expr', env') -> do
-          case getString' expr' of
-            Just str -> lift $ putStrLn str
-            Nothing -> lift $ putStrLn (prettyPrint expr')
-          repl env'
+        Right (res, env') -> do
+          when (isStmt expr) $ lift $ do
+            defsFilename' <- defsFilename
+            appendFile defsFilename' (input ++ "\n")
+          case res of
+            EVoid -> repl env'
+            expr' -> do
+              case getString' expr' of
+                Just str -> lift $ putStrLn str
+                Nothing -> lift $ putStrLn (prettyPrint expr')
+              repl env'
 
 
 -- TODO: this doesn't update the environment!
+-- TODO: actually I'm not sure, maybe it does. But it doesn't seem to work when using 'run'
 runFile :: String -> EnvStack -> IOThrowsError EnvStack
 runFile filename env = do
   exists <- lift $ doesFileExist filename

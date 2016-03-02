@@ -135,7 +135,12 @@ import Repl
 main = do
   env <- startEnv
   stdlibFile <- stdlibFilename
-  env <- runErrorT $ envNewScope =<< runFile stdlibFile env
+  defsFilename' <- defsFilename
+  defsExists <- doesFileExist defsFilename'
+  env <- runErrorT $ do
+    env <- runFile stdlibFile env
+    env <- if defsExists then runFile defsFilename' env else pure env
+    envNewScope env
 
   args <- E.getArgs
   if null args then do

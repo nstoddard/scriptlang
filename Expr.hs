@@ -165,6 +165,13 @@ data Expr =
   EUnitDef UnitType [String] [String] (Maybe Expr) |
   EUnknown
 
+-- Determines whether an Expr should be saved to defs.txt
+isStmt :: Expr -> Bool
+isStmt (EDef {}) = True
+isStmt (EAssign {}) = True
+isStmt (EUnitDef {}) = True
+isStmt _ = False
+
 fromEList :: Expr -> [Expr]
 fromEList (EObj (PrimObj (PList xs) _)) = xs
 fromEList xs = error $ "Internal error: not a list: " ++ show xs
@@ -285,7 +292,9 @@ instance Show PrimData where
   show (PHandle handle file) = show "<handle to " ++ file ++ ">"
 
 instance Pretty PrimData where
-  pretty (PFloat x xUnits) = pretty (x,M.toList xUnits) -- TODO
+  pretty (PFloat num units)
+    | units == M.empty = pretty num
+    | otherwise = pretty num </> prettyUnits (M.toList units)
   pretty (PBool True) = pretty "true"
   pretty (PBool False) = pretty "false"
   pretty (PChar x) = pretty '#' <//> pretty x
