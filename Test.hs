@@ -91,7 +91,9 @@ arithTests = TestLabel "arith" $ TestList [
   testEq "5-4" "1",
   testEq "1/2" "0.5",
   testEq "2 + 3 * 4" "14",
-  testEq "2+3 * 4" "20"
+  testEq "2+3 * 4" "20",
+  testEq "3^3^3" "3^(3^3)",
+  testEq "5 m^2" "5 (m^2)"
   ]
 
 varTests = TestLabel "var" $ TestList [

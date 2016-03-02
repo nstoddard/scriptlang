@@ -48,7 +48,7 @@ data GlobalEnv = GlobalEnv {
   -- TODO: is this needed?
   envUnitNames :: [String],
   envUnitMap :: UnitMap
-}
+} deriving (Show)
 
 {-# NOINLINE globalEnv #-}
 globalEnv :: IORef GlobalEnv

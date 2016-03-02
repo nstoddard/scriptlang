@@ -130,7 +130,7 @@ binopR startChar reqSpaces = Infix (try $ do
   when reqSpaces someWhitespace
   name <- operator startChar True
   when reqSpaces someWhitespace
-  pure (\a b -> EFnApp (EMemberAccess b name) [Arg a]) --We swap a and b here intentionally
+  pure (\a b -> EFnApp (EMemberAccess a name) [Arg b]) --We swap a and b here intentionally
   ) AssocRight
 
 
@@ -144,6 +144,8 @@ operator startChar rassoc = (do
   char startChar
   val <- many (oneOf opChars)
   let str = startChar : val
+  if not rassoc && str == "^" then mzero
+  else if rassoc && str == "^" then pure str else do
   if rassoc /= (last str == ':') || str `elem` reservedOps then mzero else pure str
   ) <?> "operator"
 

@@ -150,7 +150,7 @@ countBrackets (x:xs)
 
 startEnv :: IO EnvStack
 startEnv = envStackFromList [
-  --("-", primUnop $ onNum negate negate),
+  ("-", primUnop $ onNum negate),
   ("!", primUnop $ onBool not),
   ("exit", nilop (lift exitSuccess)),
   ("help", makeString "TODO: write documentation"),

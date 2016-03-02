@@ -92,7 +92,7 @@ maybeEvalID derefVars (EId (id,accessType)) env = do
     EnvNotFound -> pure Nothing
     EnvFoundUnit (EObj (PrimObj (PFloat num units) _)) -> do
       unitEnv <- get globalEnv
-      pure (Just $ uncurry makeFloat $ toBaseUnits (envUnits unitEnv) (envUnitMap unitEnv) (num,units))
+      pure (Just $ uncurry makeFloat $ {-toBaseUnits (envUnits unitEnv) (envUnitMap unitEnv)-} (num,units))
     EnvFound (val, accessType2) -> do
       val <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure val
@@ -252,7 +252,7 @@ eval (EUnitDef utype names abbrs expr) env = do
 
 addUnitDef unitDef = do
   env <- get globalEnv
-  if unitExists env unitDef then putStrLn "Unit already exists!" else do
+  if unitExists env unitDef then putStrLn ("Unit already exists: " ++ show unitDef {-++ "; " ++ show env-}) else do
   globalEnv $= env {
     envUnits = unitDef : envUnits env,
     envUnitNames = unitNames unitDef ++ unitAbbrs unitDef ++ envUnitNames env,
@@ -273,6 +273,13 @@ toBaseUnits unitList m (n, units) = M.foldl'
             unit' = head . unitNames $ fromJust
                 (find (\x -> unit `elem` unitNames x || unit `elem` unitAbbrs x) unitList)
         Just res -> toBaseUnits unitList m (((**power) *** M.map (*power)) res)
+
+
+validUnit :: Units -> IO Bool
+validUnit units = do
+  unitEnv <- get globalEnv
+  pure $ all (`elem` envUnitNames unitEnv) (map fst $ M.toList units)
+
 
 convertUnits :: UnitList -> UnitMap -> NumUnits -> Units -> IOThrowsError NumUnits
 convertUnits unitList m a b
@@ -497,14 +504,28 @@ makeFloat a aUnits = EObj $ PrimObj (PFloat a aUnits) $ envFromList [
   ("/", primUnop $ onFloatCombineUnits
     (\a b -> combineUnits a (negate <$> b)) (/) a'),
   ("div", primUnop $ onApproxIntUnitless (div) a'),
+  ("^", primUnop $ power a'),
   ("==", primUnop $ onFloatToBoolSameUnits (==) a'),
   (">", primUnop $ onFloatToBoolSameUnits (>) a'),
   ("<", primUnop $ onFloatToBoolSameUnits (<) a'),
   (">=", primUnop $ onFloatToBoolSameUnits (>=) a'),
   ("<=", primUnop $ onFloatToBoolSameUnits (<=) a'),
-  ("!=", primUnop $ onFloatToBoolSameUnits (/=) a')
+  ("!=", primUnop $ onFloatToBoolSameUnits (/=) a'),
+  ("@", primUnop $ \b -> case b of
+    PFloat b bUnits -> do
+      let b' = (b, bUnits)
+      bValid <- lift $ validUnit (snd b')
+      case (a', bValid) of
+        (PFloat a aUnits, True) -> do
+          unitEnv <- get globalEnv
+          (num,units) <- convertUnits (envUnits unitEnv) (envUnitMap unitEnv) (a/fst b', aUnits) (snd b')
+          pure $ makeFloat num units
+        (PFloat a aUnits, False) -> throwError $
+          "Invalid unit in convesion: " ++ prettyPrint b ++ "."
+        (x, _) -> throwError $
+            "Invalid conversion: can't convert " ++ prettyPrint x ++ "."
+    _ -> error "Invalid arguments to @")
   {-("%", primUnop $ onFloat (fmod a)),
-  ("^", primUnop $ onFloat (a**)),
   ("abs", floatNilop $ abs a),
   ("sign", floatNilop $ signum a),
   ("floor", nilop . pure . makeInt $ floor a),
@@ -792,12 +813,12 @@ stringUnop' :: (String -> EnvStack -> IOThrowsError (Expr,EnvStack)) -> Expr
 stringUnop' f = objUnop' $ \obj env -> case getString2' obj of
   Just str -> f str env
   Nothing -> throwError $ "Invalid argument to stringUnop: " ++ prettyPrint obj
-{-
-onNum :: (Integer -> Integer) -> (Double -> Double) -> (PrimData -> IOThrowsError Expr)
-onNum onInt onFloat (PFloat b) = pure . makeFloat $ onFloat b
-onNum onInt onFloat _ = throwError "Invalid argument to onNum"
 
-onInt' :: (Integer -> IOThrowsError Expr) -> (PrimData -> IOThrowsError Expr)
+onNum :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
+onNum onFloat (PFloat b bUnits) = pure $ makeFloat (onFloat b) bUnits
+onNum onFloat _ = throwError "Invalid argument to onNum"
+
+{-onInt' :: (Integer -> IOThrowsError Expr) -> (PrimData -> IOThrowsError Expr)
 onInt' f (PFloat b) = case asApproxInt b of
   Just b -> f b
   _ -> throwError "Invalid argument to onInt'"
@@ -828,3 +849,9 @@ onFloatCombineUnits :: (Units -> Units -> Units) -> (Double -> Double -> Double)
 onFloatCombineUnits combine f (PFloat a aUnits) (PFloat b bUnits)
   = pure $ makeFloat (f a b) (combine aUnits bUnits)
 onFloatCombineUnits _ _ _ _ = throwError "Invalid argument to onFloatCombineUnits"
+
+power :: PrimData -> (PrimData -> IOThrowsError Expr)
+power (PFloat b bUnits) (PFloat a aUnits)
+  | M.null bUnits = pure $ makeFloat (a**b) (M.map (*b) aUnits)
+  | otherwise = throwError "Incompatible units"
+power _ _ = throwError "Invalid argument to power"
