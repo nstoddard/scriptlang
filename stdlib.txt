@@ -114,9 +114,9 @@ unit trillion/trillions = 1000 billion
 unit dollar/dollars
 unit cent/cents = 0.01 dollar
 
-double = x -> x*2
-square = x -> x*x
-sqrt = x -> x^(1/2)
+//double = x -> x*2
+//square = x -> x*x
+//sqrt = x -> x^(1/2)
 //logBase = $base, x => ln x / ln base
 //lg = $x => logBase 2 x
 

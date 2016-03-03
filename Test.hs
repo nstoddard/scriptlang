@@ -79,7 +79,7 @@ testEqual a b = do
       eq <- runErrorT $ exprEq exprA exprB
       case eq of
         Left err -> assertFailure $ "Failed to compare for equality: `" ++ a ++ "` and `" ++ b ++ "`; got error " ++ err
-        Right eq -> assertBool ("Expected " ++ a ++ " to eval to " ++ b ++ " but got " ++ prettyPrint exprA) eq
+        Right eq -> assertBool ("Expected " ++ a ++ " to eval to " ++ prettyPrint exprB ++ " but got " ++ prettyPrint exprA) eq
     (Right _, Left errB) -> assertFailure $ "Failed to eval `" ++ b ++ "`; got error " ++ errB
     (Left errA, Right _) -> assertFailure $ "Failed to eval `" ++ a ++ "`; got error " ++ errA
     (Left errA, Left errB) -> assertFailure $ "Failed to eval `" ++ a ++ "` and `" ++ b ++ "`; got errors " ++ errA ++ " and " ++ errB
@@ -105,6 +105,8 @@ varTests = TestLabel "var" $ TestList [
   ]
 
 fnTests = TestLabel "fn" $ TestList [
+  testEq "(x -> x) 5" "5",
+  testEq "(xs* -> xs) 1 2 3" "[1,2,3]",
   testEq "(sumUpTo = n -> (n * (n+1)) div 2; sumUpTo 100)" "5050",
   testEq "(fac = n -> if (n==0) 1 else n * fac (n-1); fac 5)" "120"
   ]

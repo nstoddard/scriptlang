@@ -127,7 +127,7 @@ handleCtrlC = H.handle . ctrlC where
   ctrlC def e = lift (putStrLn $ "Unknown exception: " ++ show e) >> pure def
 
 replGetInput cont = do
-  let prompt = if isJust cont then "... " else "script> "
+  let prompt = if isJust cont then "... " else "> "
   input_ <- handleCtrlC (Just "void") $ getInputLine prompt
   input <- case input_ of
     Nothing -> lift exitSuccess

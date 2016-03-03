@@ -208,7 +208,7 @@ eval (EClone x) env = do
     EObj (Obj obj) -> (,env) . EObj . Obj <$> lift (clone obj)
     _ -> throwError "Invalid argument to clone; must be an object."
 eval (ENew' xs) env = do
-  xs' <- mapM (\expr -> eval expr env) xs
+  xs' <- mapM (`eval` env) xs
   foldM (\(res, env) (x,_) -> case (res, x) of
     (EObj (Obj res), EObj (Obj obj)) -> do
       obj' <- lift (clone obj)
@@ -511,37 +511,37 @@ makeFloat a aUnits = EObj $ PrimObj (PFloat a aUnits) $ envFromList [
           "Invalid unit in convesion: " ++ prettyPrint b ++ "."
         (x, _) -> throwError $
             "Invalid conversion: can't convert " ++ prettyPrint x ++ "."
-    _ -> error "Invalid arguments to @")
-  {-("%", primUnop $ onFloat (fmod a)),
-  ("abs", floatNilop $ abs a),
-  ("sign", floatNilop $ signum a),
-  ("floor", nilop . pure . makeInt $ floor a),
-  ("ceil", nilop . pure . makeInt $ ceiling a),
-  ("truncate", nilop . pure . makeInt $ truncate a),
-  ("round", nilop . pure . makeInt $ round a),
-  ("isNaN", nilop . pure . makeBool $ isNaN a),
+    _ -> error "Invalid arguments to @"),
+  ("%", primUnop $ onFloatNoUnits2 fmod a'),
+  ("abs", nilop $ onFloatWithUnits1 abs a'),
+  ("sign", nilop $ onFloatWithUnits1 signum a'),
+  ("floor", nilop $ onFloatNoUnits1 (fromIntegral . floor) a'),
+  ("ceil", nilop $ onFloatNoUnits1 (fromIntegral . ceiling) a'),
+  ("truncate", nilop $ onFloatNoUnits1 (fromIntegral . truncate) a'),
+  ("round", nilop $ onFloatNoUnits1 (fromIntegral . round) a'),
+  ("ln", nilop $ onFloatNoUnits1 log a'),
+  ("log", nilop $ onFloatNoUnits1 (logBase 10) a'),
+  ("lg", nilop $ onFloatNoUnits1 (logBase 2) a'),
+  ("exp", nilop $ onFloatNoUnits1 exp a'),
+  ("sqrt", nilop $ onFloatNoUnits1 sqrt a'),
+  ("sin", nilop $ onFloatNoUnits1 sin a'),
+  ("cos", nilop $ onFloatNoUnits1 cos a'),
+  ("tan", nilop $ onFloatNoUnits1 tan a'),
+  ("asin", nilop $ onFloatNoUnits1 asin a'),
+  ("acos", nilop $ onFloatNoUnits1 acos a'),
+  ("atan", nilop $ onFloatNoUnits1 atan a'),
+  ("sinh", nilop $ onFloatNoUnits1 sinh a'),
+  ("cosh", nilop $ onFloatNoUnits1 cosh a'),
+  ("tanh", nilop $ onFloatNoUnits1 tanh a'),
+  ("asinh", nilop $ onFloatNoUnits1 asinh a'),
+  ("acosh", nilop $ onFloatNoUnits1 acosh a'),
+  ("atanh", nilop $ onFloatNoUnits1 atanh a')
+  {-("isNaN", nilop . pure . makeBool $ isNaN a),
   ("isInfinite", nilop . pure . makeBool $ isInfinite a),
   ("isDenormalized", nilop . pure . makeBool $ isDenormalized a),
   ("isNegativeZero", nilop . pure . makeBool $ isNegativeZero a),
   ("logBase", primUnop $ onFloat (logBase a)),
   ("atan2", primUnop $ onFloat (atan2 a)),
-  ("ln", floatNilop $ log a),
-  ("log", floatNilop $ logBase 10 a),
-  ("lg", floatNilop $ logBase 2 a),
-  ("exp", floatNilop $ exp a),
-  ("sqrt", floatNilop $ sqrt a),
-  ("sin", floatNilop $ sin a),
-  ("cos", floatNilop $ cos a),
-  ("tan", floatNilop $ tan a),
-  ("asin", floatNilop $ asin a),
-  ("acos", floatNilop $ acos a),
-  ("atan", floatNilop $ atan a),
-  ("sinh", floatNilop $ sinh a),
-  ("cosh", floatNilop $ cosh a),
-  ("tanh", floatNilop $ tanh a),
-  ("asinh", floatNilop $ asinh a),
-  ("acosh", floatNilop $ acosh a),
-  ("atanh", floatNilop $ atanh a),
   ("through", primUnop $ \x -> case (asApproxInt a, asApproxInt' x) of
     (Just a, Just b) -> pure $ makeList $ map makeInt [a..b]
     _ -> throwError "Invalid argument to 'to'"),
@@ -834,7 +834,9 @@ objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
     pure (a==b && aUnits==bUnits)
   (PBool a, PBool b) -> pure (a==b)
   (PChar a, PChar b) -> pure (a==b)
-  (PList as, PList bs) -> and <$> sequence (exprEq <$> as <*> bs)
+  (PList as, PList bs) -> if length as == length bs
+    then and <$> sequence (exprEq <$> as <*> bs)
+    else pure False
   (_,_) -> pure False
 objEq _ _ = pure False
 
@@ -857,6 +859,23 @@ onFloatSameUnits f (PFloat a aUnits) b = do
   if aUnits == bUnits then pure $ makeFloat (f a b) aUnits
   else throwError "Incompatible units"
 onFloatSameUnits _ _ _ = throwError "Invalid argument to onFloatSameUnits"
+
+onFloatNoUnits1 :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
+onFloatNoUnits1 f (PFloat a aUnits) = do
+  if aUnits == M.empty then pure $ makeFloat (f a) aUnits
+  else throwError "Incompatible units"
+onFloatNoUnits1 _ _ = throwError "Invalid argument to onFloatNoUnits1"
+
+onFloatWithUnits1 :: (Double -> Double) -> (PrimData -> IOThrowsError Expr)
+onFloatWithUnits1 f (PFloat a aUnits) = do
+  pure $ makeFloat (f a) aUnits
+onFloatWithUnits1 _ _ = throwError "Invalid argument to onFloatWithUnits1"
+
+onFloatNoUnits2 :: (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)
+onFloatNoUnits2 f (PFloat a aUnits) (PFloat b bUnits) = do
+  if aUnits == M.empty && bUnits == M.empty then pure $ makeFloat (f a b) aUnits
+  else throwError "Incompatible units"
+onFloatNoUnits2 _ _ _ = throwError "Invalid argument to onFloatNoUnits2"
 
 onFloatCombineUnits :: (Units -> Units -> Units) -> (Double -> Double -> Double) -> PrimData -> (PrimData -> IOThrowsError Expr)
 onFloatCombineUnits combine f (PFloat a aUnits) (PFloat b bUnits)
