@@ -1,3 +1,4 @@
+// Math
 pi = 3.141592653589793238462643383279
 tau = 2*pi
 
@@ -16,6 +17,8 @@ fib = n -> (
   a
 )
 
+
+// Misc functions
 id = x -> x
 
 list = xs* -> xs
@@ -24,9 +27,19 @@ while = ~cond ~f -> if cond (f; while ~cond ~f)
 
 compose = a b -> x -> a (b (x))
 
-println 'Scriptlang version 0.1'
+
+// External programs
+sbt = -> &sbt
 pwd = -> println (wd)
+
+
+
+
+
+println 'Scriptlang version 0.1'
 pwd
+
+
 
 read = file -> withGen (yield -> withFile file "r" (file -> while (!(file.atEOF)) (yield (file.readChar))))
 write = file gen -> withFile file "w" (file -> while (gen.moveNext) (file.writeChar (gen.cur)))

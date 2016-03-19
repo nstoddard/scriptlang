@@ -14,8 +14,8 @@ import Control.Monad.Error
 import Data.Maybe
 import Data.Char
 import System.IO.Unsafe
-import System.IO.Error hiding (try)
-import Control.Exception hiding (try, block)
+import System.IO.Error
+import Control.Exception hiding (try)
 import Data.IORef
 import Data.StateVar
 import qualified Data.Map as M
@@ -83,7 +83,12 @@ parseNonFnAppExpr = buildExpressionParser opTable1 $ parseSingleTokenExpr
 
 parseSingleTokenExpr = parseMemberAccess
 parseNonMemberAccess = parseOtherExpr
-parseOtherExpr = asum [parseMakeObj, EBlock <$> block '(' ')', parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString '"', parseString '\'', parseChar, parseBool, EId <$> identifier']
+parseOtherExpr = asum [parseRunExternal, parseMakeObj, EBlock <$> block '(' ')', parseList, parseFloat, parseInt, parseVoid, parseUnknown, parseString, parseChar, parseBool, EId <$> identifier']
+
+parseRunExternal = do
+  symbol "&"
+  (ERunRawExternal <$> parseString') <|> (EEvalExternalProgram <$> parseParens) <|> (EExternalProgram <$> identifier)
+
 
 parsePipes = do
   start <- parseNonPipeExpr
@@ -228,7 +233,9 @@ parseVoid = keyword "void" *> pure EVoid
 parseInt = makeInt <$> integer
 parseFloat = makeFloat <$> float <*> pure M.empty
 parseChar = makeChar <$> (char '#' *> character)
-parseString bound = makeString <$> (char bound *> many (character' [bound]) <* char bound)
+parseString = makeString <$> parseString'
+parseString' = parseString'' '"' <|> parseString'' '\''
+parseString'' bound = char bound *> many (character' [bound]) <* char bound
 character' omit = escapeChar <|> noneOf omit
 character = escapeChar <|> anyChar
 escapeChar = char '\\' *> asum (for escapeChars $ \(c,v) -> char c *> pure v)
@@ -254,7 +261,7 @@ opChars = "/<>?:\\|~!@#$%^&*+-="
 --These are operators that can't be redefined because they're used in the language syntax
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", "//", "/*", "*/"]
 --These are operators that are used as syntax in some cases, but can be redefined in others
-builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--"]
+builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--", "&"]
 keywords = ["true", "false", "new", "with", "extend", "clone", "void", "if", "else", "var", "unit", "si-unit", "bin-unit"]
 
 groupChars = "()[]{}"

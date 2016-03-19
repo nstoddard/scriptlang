@@ -92,7 +92,7 @@ envDefine id env@(EnvStack (x:xs)) f = do
   (val,ret) <- f
   lift $ x $= M.insert id val x'
   pure (ret, env)
-
+envDefine _ _ _ = error "Invalid arguments to envDefine"
 
 
 
@@ -151,6 +151,7 @@ data Expr =
   EValClosure Expr EnvStack |
   EIf Expr Expr Expr |
   EUnitDef UnitType [String] [String] (Maybe Expr) |
+  ERunRawExternal String | EExternalProgram String | EEvalExternalProgram Expr |
   EUnknown
 
 -- Determines whether an Expr should be saved to defs.txt
@@ -264,7 +265,7 @@ instance Pretty Expr where
   pretty EUnknown = pretty "_"
   pretty (EValClosure expr env) = pretty expr
   pretty (EExec prog args) = pretty prog </> hsep (map pretty args)
-  pretty (EUnitDef {}) = pretty "TODO"
+  pretty x = pretty (show x) -- TODO
 
 instance Pretty Fn where
   pretty (Prim _) = pretty "<prim>"
@@ -349,6 +350,9 @@ instance Show Expr where
   show (EIf cond t f)      = "(EIf " ++ show cond ++ " " ++ show t ++ " " ++ show f ++ ")"
   show EUnknown            = "EUnknown"
   show (EUnitDef a b c d)  = "(EUnitDef " ++ show a ++ " " ++ show b ++ " " ++ show c ++ " " ++ show d ++ ")"
+  show (ERunRawExternal str) = "(ERunRawExternal " ++ show str ++ ")"
+  show (EExternalProgram str) = "(EExternalProgram " ++ show str ++ ")"
+  show (EEvalExternalProgram x) = "(EEvalExternalProgram " ++ show x ++ ")"
 
 
 isOperator = not . isAlphaNum . head

@@ -184,7 +184,7 @@ eval (EFnApp fn args) env = do
             EnvNotFound -> evalFnApp
         _ -> evalFnApp
     EObj obj -> case args of
-      [] -> pure (EObj obj,env) --This is the case when you have a lone identifier
+      [] -> pure (EObj obj,env) --This is the case when you have a lone identifier. It's not a function.
       args'@(Arg (EId (id,ByVal)):args) -> do
         val <- envLookup id env
         case val of
@@ -196,6 +196,13 @@ eval (EFnApp fn args) env = do
     EVoid -> case args of
       [] -> pure (EVoid,env)
       args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
+    EExternalProgram prog -> do
+      verifyArgs args
+      args' <- getExecArgs args env
+      res <- lift $ tryJust (guard . isDoesNotExistError) (myRawSystem prog args')
+      case res of
+        Left err -> throwError $ "Program not found: " ++ prog
+        Right res -> pure (EVoid, env)
     x -> throwError ("Invalid function: " ++ prettyPrint x)
 eval (EMakeObj exprs) env = do
   env' <- envNewScope env
@@ -249,6 +256,18 @@ eval (EUnitDef utype names abbrs expr) env = do
             unitNames = names, unitAbbrs = abbrs, unitValue = val'}
     lift $ mapM addUnitDef (addSIPrefixes unitDef)
     pure (EVoid, env)
+eval (ERunRawExternal program) env = do
+  res <- lift $ tryJust (guard . isDoesNotExistError) (system program)
+  case res of
+    Left err -> throwError $ "Program not found: " ++ program
+    Right res -> pure (EVoid, env)
+eval (EExternalProgram prog) env = pure (EExternalProgram prog, env)
+eval (EEvalExternalProgram expr) env = do
+  res <- getString' <$> eval' expr env
+  case res of
+    Just str -> pure (EExternalProgram str, env)
+    Nothing -> throwError $ "Not a valid program: " ++ show res
+
 
 addUnitDef unitDef = do
   env <- get globalEnv
@@ -285,7 +304,7 @@ validUnit units = do
 convertUnits :: UnitList -> UnitMap -> NumUnits -> Units -> IOThrowsError NumUnits
 convertUnits unitList m a b
     | aUnits == bUnits = pure (aRes*recip bRes, b)
-    | otherwise = error $ "Invalid unit conversion from " ++
+    | otherwise = throwError $ "Invalid unit conversion from " ++
         prettyPrint aUnits ++ " to " ++ prettyPrint b ++ "."
     where
     (aRes, aUnits) = toBaseUnits unitList m a
@@ -664,6 +683,9 @@ desugar (EObj x) = EObj $ desugarObj x
 desugar (EIf a b c) = EIf (desugar a) (desugar b) (desugar c)
 desugar EUnknown = EUnknown
 desugar (EUnitDef a b c x) = EUnitDef a b c (desugar <$> x)
+desugar (ERunRawExternal x) = ERunRawExternal x
+desugar (EExternalProgram x) = EExternalProgram x
+desugar (EEvalExternalProgram x) = EEvalExternalProgram (desugar x)
 
 desugarObj :: Obj -> Obj
 desugarObj (Obj env) = Obj env
@@ -819,6 +841,7 @@ convertPFloat (PFloat x xUnits) yUnits = do
   unitEnv <- get globalEnv
   (num,units) <- convertUnits (envUnits unitEnv) (envUnitMap unitEnv) (x, xUnits) yUnits
   pure $ PFloat num units
+convertPFloat _ _ = error "Invalid argument to convertPFloat"
 
 
 exprEq :: Expr -> Expr -> IOThrowsError Bool
@@ -835,7 +858,7 @@ objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
   (PBool a, PBool b) -> pure (a==b)
   (PChar a, PChar b) -> pure (a==b)
   (PList as, PList bs) -> if length as == length bs
-    then and <$> sequence (exprEq <$> as <*> bs)
+    then and <$> zipWithM exprEq as bs
     else pure False
   (_,_) -> pure False
 objEq _ _ = pure False
