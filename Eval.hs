@@ -43,7 +43,9 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
   val <- envLookup id env
   case val of
     EnvNotFound -> throwError $ notFoundMsg ++ id
-    EnvFoundUnit val -> error "How should I handle this case (1)?"
+    EnvFoundUnit (EObj (PrimObj (PFloat num units) _)) -> do
+      unitEnv <- get globalEnv
+      pure (uncurry makeFloat (num,units))
     EnvFound (val, accessType2) -> do
       val <- case (accessType,accessType2) of
         (ByVal, ByVal) -> pure val
@@ -51,19 +53,15 @@ evalID derefVars (EId (id,accessType)) notFoundMsg env = do
         (ByName, ByName) -> pure val
         (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
       if derefVars then (case val of
-        EVar var -> (,env) <$> lift (get var)
-        val -> pure (val,env))
-      else pure (val,env)
+        EVar var -> lift (get var)
+        val -> pure val)
+      else pure val
 
-evalID' derefVars id notFoundMsg env = fst <$> evalID derefVars id notFoundMsg env
-
-lookupID id = evalID' True (EId (id,ByVal)) "Identifier not found: "
+lookupID id = evalID True (EId (id,ByVal)) "Identifier not found: "
 
 --Similar to rawSystem, but also handles commands like "sbt" and "clear"
 myRawSystem command args = system (intercalate " " $ map parenify (command:args))
   where parenify str = if any isSpace str then "\"" ++ str ++ "\"" else str
---myRawSystem = rawSystem
-
 
 
 
@@ -86,50 +84,31 @@ envLookup id (EnvStack (x:xs)) = do
 
 
 
-maybeEvalID derefVars (EId (id,accessType)) env = do
-  val <- envLookup id env
-  case val of
-    EnvNotFound -> pure Nothing
-    EnvFoundUnit (EObj (PrimObj (PFloat num units) _)) -> do
-      unitEnv <- get globalEnv
-      pure (Just $ uncurry makeFloat $ {-toBaseUnits (envUnits unitEnv) (envUnitMap unitEnv)-} (num,units))
-    EnvFound (val, accessType2) -> do
-      val <- case (accessType,accessType2) of
-        (ByVal, ByVal) -> pure val
-        (ByVal, ByName) -> eval' val env
-        (ByName, ByName) -> pure val
-        (ByName, ByVal) -> throwError $ "Invalid use of ~: " ++ prettyPrint val
-      if derefVars then (case val of
-        EVar var -> Just <$> lift (get var)
-        val -> pure $ Just val)
-      else pure $ Just val
 
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 eval EVoid env = pure (EVoid, env)
-eval id@(EId (idStr,_)) env = do
-  id' <- maybeEvalID True id env
-  case id' of
-    Just id -> pure (id, env)
-    Nothing -> throwError ("Unknown identifier: " ++ idStr)
-eval (EGetVar var) env = evalID False (EId var) "Variable not found: " env
+eval id@(EId _) env =
+  (,env) <$> evalID True id "Unknown identifier: " env
+eval (EGetVar var) env =
+  (,env) <$> evalID False (EId var) "Variable not found: " env
 eval (EMemberAccess obj id) env = do
   obj <- eval' obj env
   case obj of
     EObj (Obj oenv) -> do
-      val <- evalID' True (eId id) "Object has no such field in member access: " =<< lift (envStackFromEnv oenv)
+      val <- evalID True (eId id) "Object has no such field in member access: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EObj (PrimObj prim oenv) -> do
-      val <- evalID' True (eId id) "Object has no such field in member access: " =<< lift (envStackFromEnv oenv)
+      val <- evalID True (eId id) "Object has no such field in member access: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
 eval (EMemberAccessGetVar obj id) env = do
   obj <- eval' obj env
   case obj of
     EObj (Obj oenv) -> do
-      val <- evalID' False (eId id) "Object has no such field in member access 2: " =<< lift (envStackFromEnv oenv)
+      val <- evalID False (eId id) "Object has no such field in member access 2: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     EObj (PrimObj prim oenv) -> do
-      val <- evalID' False (eId id) "Object has no such field in member access 2: " =<< lift (envStackFromEnv oenv)
+      val <- evalID False (eId id) "Object has no such field in member access 2: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
 eval (EObj (FnObj params (Fn body) fnEnv)) env = do

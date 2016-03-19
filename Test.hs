@@ -95,7 +95,7 @@ arithTests = TestLabel "arith" $ TestList [
   testEq "2 + 3 * 4" "14",
   testEq "2+3 * 4" "20",
   testEq "3^3^3" "3^(3^3)",
-  testEq "5 m^2" "5 (m^2)"
+  testEq "2*3+4 * 10" "100"
   ]
 
 varTests = TestLabel "var" $ TestList [
@@ -133,6 +133,7 @@ unitTests = TestLabel "unit" $ TestList [
   testEq "5 meters + 500 cm" "10 meters",
   testEq "5 m * 2 m" "10 m^2",
   testEq "5 m / 2 m" "2.5",
+  testEq "5 m^2" "5 (m^2)",
   testEq "5 thousand" "5000"
   ]
 
