@@ -416,12 +416,6 @@ matchParams [RepParam (name,accessType)] args env = do
 matchParams params_ (KeywordArg k arg:args) env = do
   params <- takeKeywordArg params_ k
   matchParams' params arg args True env
-matchParams params_ (FlagArg flag:args) env = do
-  params <- takeFlagParam params_ flag
-  (:) (flag,ByVal,makeBool True) <$> matchParams params args env
-matchParams (FlagParam flag:params) args_ env = do
-  (args,match) <- takeFlagArg args_ flag
-  (:) (flag,ByVal,makeBool match) <$> matchParams params args env
 matchParams params_ (LongFlagArg flag:args) env = throwError $ "Long flag syntax is only supported when calling external scripts: --" ++ flag
 matchParams params [] env = throwError $ "Not enough arguments for function; unspecified arguments: " ++ intercalate ", " (map prettyPrint params)
 matchParams [] args env = throwError $ "Too many arguments for function; extra arguments: " ++ intercalate ", " (map prettyPrint args)
@@ -436,16 +430,6 @@ takeKeywordArg params name = case length match of
     (match, noMatch) = flip partition params $ \param -> case param of
       ReqParam (name',_)   -> name == name'
       OptParam (name',_) _ -> name == name'
-
-takeFlagParam :: [Param] -> String -> IOThrowsError [Param]
-takeFlagParam params flag = do
-  (match, noMatch) <- flip partitionM params $ \param -> case param of
-    FlagParam flag' -> pure $ flag == flag'
-    _ -> throwError "Invalid flag."
-  case length match of
-    0 -> throwError $ "No match for flag " ++ flag
-    1 -> pure noMatch
-    _ -> throwError $ "Multiple matches for flag " ++ flag ++ ". This indicates a bug in the interpreter; this problem should have been caught when the invalid function was declared."
 
 takeFlagArg :: [Arg] -> String -> IOThrowsError ([Arg],Bool)
 takeFlagArg args flag = do
@@ -464,7 +448,6 @@ verifyParams = verifyParams' S.empty where
   verifyParams' set (ReqParam name:  params) = verifyID set name params
   verifyParams' set (OptParam name _:params) = verifyID set name params
   verifyParams' set (RepParam name:  params) = verifyID set name params
-  verifyParams' set (FlagParam name: params) = verifyID set (name,ByVal) params
   verifyID set (name,_) params = if S.member name set then throwError $ "Two definitions for parameter " ++ name
     else verifyParams' (S.insert name set) params
 
@@ -746,7 +729,6 @@ isRestArgs _ = False
 desugarParam (ReqParam id) = ReqParam id
 desugarParam (OptParam id expr) = OptParam id (desugar expr)
 desugarParam (RepParam id) = RepParam id
-desugarParam (FlagParam flag) = FlagParam flag
 
 desugarArg (Arg expr) = Arg (desugar expr)
 desugarArg (KeywordArg id expr) = KeywordArg id (desugar expr)

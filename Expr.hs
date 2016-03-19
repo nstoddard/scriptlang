@@ -196,7 +196,7 @@ instance Clone Obj where
 data Fn = Prim (EnvStack -> IOThrowsError (Expr,EnvStack)) | Fn Expr | Closure Expr EnvStack
 
 --TODO: should I rename RepParam to ListParam for consistency with ListArg?
-data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier | FlagParam String deriving Show
+data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier deriving Show
 data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String | LongFlagArg String deriving Show
 
 type IOThrowsError = ErrorT String IO
@@ -233,7 +233,6 @@ instance Pretty Param where
   pretty (ReqParam (id,accessType)) = pretty accessType <//> pretty id
   pretty (OptParam (id,accessType) def) = pretty accessType <//> pretty id <//> pretty ":" <//> pretty def
   pretty (RepParam (id,accessType)) = pretty accessType <//> pretty id <//> pretty "*"
-  pretty (FlagParam flag) = pretty flag <//> pretty "?"
 
 instance Pretty Arg where
   pretty (Arg expr) = pretty expr

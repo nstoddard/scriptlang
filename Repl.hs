@@ -87,7 +87,10 @@ repl env = do
         Right (res, env') -> do
           when (isStmt expr) $ lift $ do
             defsFilename' <- defsFilename
-            appendFile defsFilename' (input ++ "\n")
+            case expr of
+              -- Don't write assignments to 'debug' to defs.txt. Otherwise it'll cause extra stuff to be printed.
+              EAssign (EGetVar ("debug", _)) _ -> pure ()
+              _ -> appendFile defsFilename' (input ++ "\n")
           case res of
             EVoid -> repl env'
             expr' -> do

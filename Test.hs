@@ -108,7 +108,13 @@ fnTests = TestLabel "fn" $ TestList [
   testEq "(x -> x) 5" "5",
   testEq "(xs* -> xs) 1 2 3" "[1,2,3]",
   testEq "(sumUpTo = n -> (n * (n+1)) div 2; sumUpTo 100)" "5050",
-  testEq "(fac = n -> if (n==0) 1 else n * fac (n-1); fac 5)" "120"
+  testEq "(fac = n -> if (n==0) 1 else n * fac (n-1); fac 5)" "120",
+  testEq "(id = x -> x; id 5)" "5",
+  testEq "(compose = a b -> x -> a (b (x)); (compose (_+2) (_*3)) 6)" "20",
+  testEq "(list = xs* -> xs; list 5 4)" "[5,4]",
+  testEq "(keywordTest = a b -> list a b; keywordTest 5 4)" "[5,4]",
+  testEq "(keywordTest = a b -> list a b; keywordTest a=5 b=4)" "[5,4]",
+  testEq "(keywordTest = a b -> list a b; keywordTest b=5 a=4)" "[4,5]"
   ]
 
 objTests = TestLabel "obj" $ TestList [
@@ -126,7 +132,8 @@ unitTests = TestLabel "unit" $ TestList [
   testEq "5 meters" "500 cm",
   testEq "5 meters + 500 cm" "10 meters",
   testEq "5 m * 2 m" "10 m^2",
-  testEq "5 m / 2 m" "2.5"
+  testEq "5 m / 2 m" "2.5",
+  testEq "5 thousand" "5000"
   ]
 
 allTests = TestList [arithTests, varTests, fnTests, objTests, unitTests]

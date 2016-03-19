@@ -174,11 +174,10 @@ parseNullaryFn = eFn [] <$> (symbol "->" /> parseExpr)
 
 parseParams = parseSomeParams <|> pure []
 
-parseSomeParams = ((:) <$> parseOptParam </> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> try parseFlagParam </> parseParams) <|> ((:) <$> parseReqParam </> parseParams) where
+parseSomeParams = ((:) <$> parseOptParam </> parseParams) <|> ((:[]) <$> try parseRepParam) <|> ((:) <$> parseReqParam </> parseParams) where
   parseOptParam = OptParam <$> (symbol "?" *> identifier') <*> (symbol "=" *> parseExpr)
   parseRepParam = RepParam <$> identifier' <* symbol "*"
   parseReqParam = ReqParam <$> identifier'
-  parseFlagParam = FlagParam <$> identifier <* symbol "?"
 
 
 parseMemberAccess = do
