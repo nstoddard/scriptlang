@@ -114,7 +114,8 @@ fnTests = TestLabel "fn" $ TestList [
   testEq "(list = xs* -> xs; list 5 4)" "[5,4]",
   testEq "(keywordTest = a b -> list a b; keywordTest 5 4)" "[5,4]",
   testEq "(keywordTest = a b -> list a b; keywordTest a=5 b=4)" "[5,4]",
-  testEq "(keywordTest = a b -> list a b; keywordTest b=5 a=4)" "[4,5]"
+  testEq "(keywordTest = a b -> list a b; keywordTest b=5 a=4)" "[4,5]",
+  testEq "((_+2) o (_*3)) 5" "17"
   ]
 
 objTests = TestLabel "obj" $ TestList [

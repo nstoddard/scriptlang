@@ -215,13 +215,13 @@ identifier = backquoteIdentifier <|> (do
 backquoteIdentifier = char '`' *> many (noneOf "`") <* char '`'
 
 
-parseIf = EIf <$> (keyword "if" /> parseSingleTokenExpr) <*> (anyWhitespace *> parseNonIf) <*> (parseElse <|> pure EVoid)
+parseIf = EIf <$> (keyword "if" /> parseSingleTokenExpr) <*> (anyWhitespace *> parseNonIf) <*> (parseElse <|> pure makeVoid)
 parseElse = try (anyWhitespace *> keyword "else") *> anyWhitespace *> parseExpr
 
 parseBool = parseTrue <|> parseFalse
 parseTrue = keyword "true" *> pure (makeBool True)
 parseFalse = keyword "false" *> pure (makeBool False)
-parseVoid = keyword "void" *> pure EVoid
+parseVoid = keyword "void" *> pure makeVoid
 
 
 parseInt = makeInt <$> integer

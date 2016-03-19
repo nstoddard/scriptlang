@@ -92,7 +92,7 @@ repl env = do
               EAssign (EGetVar ("debug", _)) _ -> pure ()
               _ -> appendFile defsFilename' (input ++ "\n")
           case res of
-            EVoid -> repl env'
+            EObj (PrimObj PVoid _) -> repl env'
             expr' -> do
               case getString' expr' of
                 Just str -> lift $ putStrLn str
@@ -160,20 +160,20 @@ startEnv = do
     ("!", primUnop $ onBool not),
     ("exit", nilop (lift exitSuccess)),
     ("help", makeString "TODO: write documentation"),
-    ("env", nilop' $ \env -> lift (print =<< getEnvs env) *> pure (EVoid,env)), --TODO: THIS DOESN'T WORK
-    ("envOf", unop $ \expr -> (lift . (print <=< getEnvs) =<< getExprEnv expr) *> pure EVoid),
+    ("env", nilop' $ \env -> lift (print =<< getEnvs env) *> pure (makeVoid, env)), --TODO: THIS DOESN'T WORK
+    ("envOf", unop $ \expr -> (lift . (print <=< getEnvs) =<< getExprEnv expr) *> pure makeVoid),
     ("print", objUnop' $ \obj env -> do
       expr <- call obj "toString" [] env
       case getString' expr of
         Just str -> lift $ putStr str
         Nothing -> throwError $ "toString must return a string; not " ++ prettyPrint expr
-      pure (EVoid,env)),
+      pure (makeVoid,env)),
     ("println", objUnop' $ \obj env -> do
       expr <- call obj "toString" [] env
       case getString' expr of
         Just str -> lift $ putStrLn str
         Nothing -> throwError $ "toString must return a string; not " ++ prettyPrint expr
-      pure (EVoid,env)),
+      pure (makeVoid,env)),
     ("readln", nilop $ makeString <$> lift getLine),
     ("eval", objUnop' $ \obj env -> case getString2' obj of
       Just str -> (,env) . fst <$> parseEval str env
@@ -185,7 +185,7 @@ startEnv = do
         makeString <$> lift workingDirectory
       else throwError $ "Directory doesn't exist: " ++ str),
     ("wd", nilop $ makeString <$> lift workingDirectory),
-    ("run", stringUnop' $ \file env -> (EVoid,) <$> runFile file env),
+    ("run", stringUnop' $ \file env -> (makeVoid,) <$> runFile file env),
     ("withGen", unop' $ \arg env -> case arg of
       EObj (FnObj {}) -> do
         gen@(EObj (PrimObj (PGen ioRef chan) _)) <- makeGen 10
@@ -193,7 +193,7 @@ startEnv = do
           let
             yield = unop $ \x -> do
               lift $ writeChan chan (Just x)
-              pure EVoid
+              pure makeVoid
           res <- runErrorT $ do
             apply arg [Arg yield] env
             lift $ writeChan chan Nothing
@@ -211,7 +211,7 @@ startEnv = do
             lift $ print =<< hGetBuffering handle
             apply fn [Arg $ makeHandle handle path] env
             lift $ hClose handle
-            pure (EVoid, env)
+            pure (makeVoid, env)
           _ -> throwError "Invalid function in withFile"
         Nothing -> throwError "Invalid mode in withFile"
       Nothing -> throwError "Invalid path in withFile"))

@@ -86,7 +86,6 @@ envLookup id (EnvStack (x:xs)) = do
 
 
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
-eval EVoid env = pure (EVoid, env)
 eval id@(EId _) env =
   (,env) <$> evalID True id "Unknown identifier: " env
 eval (EGetVar var) env =
@@ -117,7 +116,7 @@ eval (EObj (FnObj params (Fn body) fnEnv)) env = do
 eval prim@(EObj (FnObj _ (Prim _) _)) env = pure (prim, env) --This is necessary for evaulating lists; it should never happen in any other case; TODO: can this be removed?
 eval closure@(EObj (FnObj _ (Closure _ _) _)) env = pure (closure,env) --TODO: this used to give an error but is now enabled; why?
 eval (EObj obj) env = pure (EObj obj, env)
-eval (EBlock []) env = pure (EVoid, env)
+eval (EBlock []) env = pure (makeVoid, env)
 eval (EBlock exprs) env = do
   env' <- envNewScope env
   vals <- forM exprs $ \expr -> eval expr env'
@@ -161,16 +160,13 @@ eval (EFnApp fn args) env = do
           EnvNotFound -> eval (EFnApp (EMemberAccess (EObj obj) id) args) env
       args -> evalApply obj args env
       --args -> throwError ("Invalid function: " ++ prettyPrint (EObj obj))
-    EVoid -> case args of
-      [] -> pure (EVoid,env)
-      args -> throwError ("Invalid function: " ++ prettyPrint EVoid)
     EExternalProgram prog -> do
       verifyArgs args
       args' <- getExecArgs args env
       res <- lift $ tryJust (guard . isDoesNotExistError) (myRawSystem prog args')
       case res of
         Left err -> throwError $ "Program not found: " ++ prog
-        Right res -> pure (EVoid, env)
+        Right res -> pure (makeVoid, env)
     x -> throwError ("Invalid function: " ++ prettyPrint x)
 eval (EMakeObj exprs) env = do
   env' <- envNewScope env
@@ -223,12 +219,12 @@ eval (EUnitDef utype names abbrs expr) env = do
         unitDef = UnitDef {unitType = utype,
             unitNames = names, unitAbbrs = abbrs, unitValue = val'}
     lift $ mapM addUnitDef (addSIPrefixes unitDef)
-    pure (EVoid, env)
+    pure (makeVoid, env)
 eval (ERunRawExternal program) env = do
   res <- lift $ tryJust (guard . isDoesNotExistError) (system program)
   case res of
     Left err -> throwError $ "Program not found: " ++ program
-    Right res -> pure (EVoid, env)
+    Right res -> pure (makeVoid, env)
 eval (EExternalProgram prog) env = pure (EExternalProgram prog, env)
 eval (EEvalExternalProgram expr) env = do
   res <- getString' <$> eval' expr env
@@ -540,6 +536,8 @@ asApproxInt x
 {-asApproxInt' (PFloat x) = asApproxInt x
 asApproxInt' _ = Nothing-}
 
+makeVoid = EObj $ PrimObj PVoid $ envFromList []
+
 makeChar a = EObj $ PrimObj (PChar a) $ envFromList [
   ("toString", nilop $ pure (makeString $ prettyPrint a))
   ]
@@ -595,11 +593,11 @@ makeHandle handle file = EObj $ PrimObj (PHandle handle file) $ envFromList [
   ("atEOF", nilop $ makeBool <$> lift (hIsEOF handle)),
   ("readChar", nilop $ do
     eof <- lift $ hIsEOF handle
-    if eof then pure EVoid else makeChar <$> lift (hGetChar handle)),
+    if eof then pure makeVoid else makeChar <$> lift (hGetChar handle)),
   ("writeChar", objUnop $ \obj -> case obj of
     PrimObj (PChar char) _ -> do
       lift $ hPutChar handle char
-      pure EVoid
+      pure makeVoid
     _ -> throwError $ "Invalid argument to writeChar: " ++ prettyPrint obj)
   ]
 
@@ -616,7 +614,6 @@ index xs i = if i >= 0 && i < genericLength xs then pure (xs `genericIndex` i) e
 
 --TODO: turn this into a type class?
 desugar :: Expr -> Expr
-desugar EVoid = EVoid
 desugar (EId id) = EId id
 desugar (EFnApp EUnknown []) = EUnknown
 desugar (EFnApp fn args) = processUnknownArgs (desugar fn) (map desugarArg args)
@@ -795,13 +792,13 @@ convertPFloat _ _ = error "Invalid argument to convertPFloat"
 
 
 exprEq :: Expr -> Expr -> IOThrowsError Bool
-exprEq EVoid EVoid = pure True
 exprEq (EId a) (EId b) = pure (a==b)
 exprEq (EObj a) (EObj b) = objEq a b
 exprEq _ _ = pure False
 
 objEq :: Obj -> Obj -> IOThrowsError Bool
 objEq (PrimObj a ae) (PrimObj b be) = case (a, b) of
+  (PVoid, PVoid) -> pure True
   (PFloat a aUnits, b@(PFloat {})) -> do
     PFloat b bUnits <- convertPFloat b aUnits
     pure (a==b && aUnits==bUnits)

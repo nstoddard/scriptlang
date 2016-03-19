@@ -133,7 +133,7 @@ instance Pretty Units where
 
 
 data PrimData = PFloat Double Units | PBool Bool | PChar Char | PList [Expr] |
-  PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr)) | PHandle Handle String
+  PGen (IORef (Maybe Expr)) (BoundedChan (Maybe Expr)) | PHandle Handle String | PVoid
 
 
 instance Clone Expr where
@@ -142,15 +142,45 @@ instance Clone Expr where
 
 
 data Expr =
-  EVoid |
-  EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
-  EDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
-  EBlock [Expr] | EMakeObj [Expr] | ENew' [Expr] | EClone Expr |
+  -- An identifier. Includes an access type as well.
+  EId Identifier |
+  -- An identifier, but doesn't dereference variables so they can be assigned to
+  EGetVar Identifier |
+  -- A function application. Note that these are created all the time; even the expression "5" will create a function application with no arguments. This is to support behavior like "5 meters" translating to "5 * meters".
+  EFnApp Expr [Arg] |
+  -- A variable definition. Overwrites any existing variable with the same name, in the same scope.
+  EDef String Expr |
+  -- A variable assignment. Only assigns to existing variables; will NOT create a new variable.
+  EAssign Expr Expr |
+  -- Something like "a.x"
+  EMemberAccess Expr String |
+  -- ???
+  EVar (IORef Expr) |
+  -- ???
+  EMemberAccessGetVar Expr String |
+  -- A compound expression like "(x = 5; x <- 10; x)"
+  EBlock [Expr] |
+  -- Object syntax like "{a = 5; b = 10}"
+  EMakeObj [Expr] |
+  -- The "new" operation
+  ENew' [Expr] |
+  -- The "clone" operation
+  EClone Expr |
+  -- Any type of object; could be a primitive like numbers, a user-defined object, or a function (yes, functions are represented as objects).
   EObj Obj |
+  -- ???
   EValClosure Expr EnvStack |
+  -- If statements
   EIf Expr Expr Expr |
+  -- Unit definitions
   EUnitDef UnitType [String] [String] (Maybe Expr) |
-  ERunRawExternal String | EExternalProgram String | EEvalExternalProgram Expr |
+  -- &'ls -a'
+  ERunRawExternal String |
+  -- &ls
+  EExternalProgram String |
+  -- &('ls')
+  EEvalExternalProgram Expr |
+  -- The "_" in (_+2)
   EUnknown
 
 -- Determines whether an Expr should be saved to defs.txt
@@ -167,7 +197,7 @@ fromEList xs = error $ "Internal error: not a list: " ++ show xs
 getVar :: Expr -> Maybe Expr
 getVar (EId id) = pure $ EGetVar id
 getVar (EMemberAccess expr id) = pure $ EMemberAccessGetVar expr id
-getVar (EFnApp f []) = getVar f --TODO: is this line still needed?
+getVar (EFnApp f []) = getVar f
 getVar _ = Nothing
 
 getExprEnv :: Expr -> IOThrowsError EnvStack
@@ -176,6 +206,7 @@ getExprEnv (EObj (PrimObj _ env)) = lift $ envStackFromEnv env
 getExprEnv (EObj (FnObj _ (Closure _ env) _)) = pure env
 getExprEnv x = throwError $ "No environment for: " ++ show x
 
+-- ByVal is the normal mode. ByName is stuff like "~a" which doesn't eval the parameter until it's used. See "while" in stdlib.txt for an example.
 data AccessType = ByVal | ByName deriving (Eq,Show)
 
 --When a FnObj is called, it looks in the Env to see if it can handle the message. If so, it does. If not, it actually calls the function.
@@ -193,11 +224,26 @@ instance Clone Obj where
   clone (PrimObj a b) = PrimObj a <$> clone b
   clone (FnObj a b c) = FnObj a b <$> clone c
 
-data Fn = Prim (EnvStack -> IOThrowsError (Expr,EnvStack)) | Fn Expr | Closure Expr EnvStack
+-- This data structure stores only the body of the function. The parameter list is stored in FnObj, above.
+data Fn =
+  -- A primitive function
+  Prim (EnvStack -> IOThrowsError (Expr,EnvStack)) |
+  -- A user-defined function.
+  Fn Expr |
+  -- A closure; includes an environment
+  Closure Expr EnvStack
 
 --TODO: should I rename RepParam to ListParam for consistency with ListArg?
-data Param = ReqParam Identifier | OptParam Identifier Expr | RepParam Identifier deriving Show
-data Arg = Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String | LongFlagArg String deriving Show
+data Param =
+  -- A normal parameter
+  ReqParam Identifier |
+  -- An optional parameter. Used like "?x=5 -> x"
+  OptParam Identifier Expr |
+  -- A repeated parameter
+  RepParam Identifier deriving Show
+
+data Arg =
+  Arg Expr | KeywordArg String Expr | ListArg Expr | ListArgNoEval [Expr] | RestArgs | FlagArg String | LongFlagArg String deriving Show
 
 type IOThrowsError = ErrorT String IO
 
@@ -242,7 +288,6 @@ instance Pretty Arg where
   pretty (FlagArg flag) = pretty "`" <//> pretty flag
 
 instance Pretty Expr where
-  pretty EVoid = pretty "void"
   pretty (EId (id,accessType)) = pretty accessType <//> pretty id
   pretty (EFnApp f []) = pretty "(" <//> pretty f <//> pretty ")"
   pretty (EFnApp f args) = pretty "(" <//> pretty f </> hsep (map pretty args) <//> pretty ")"
@@ -330,7 +375,6 @@ instance Show Fn where
 
 --This can't be derived automatically because of EPrim
 instance Show Expr where
-  show EVoid               = "(EVoid" ++ ")"
   show (EId x)             = "(EId " ++ show x ++ ")"
   show (EFnApp x xs)       = "(EFnApp " ++ show x ++ " " ++ show xs ++ " " ++ ")"
   show (EMemberAccess x y) = "(EMemberAccess " ++ show x ++ " " ++ show y ++ ")"
