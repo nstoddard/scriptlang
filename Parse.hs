@@ -75,7 +75,7 @@ parseUnitDef = do
   pure $ EUnitDef utype names abbrs value
 
 
-parseNonStatement = parseExec <|> parsePipes
+parseNonStatement = parsePipes
 parseNonPipeExpr = parseIf <|> parseNonIf
 parseNonIf = buildExpressionParser opTable2 (parseClone <|> parseNew' <|> parseNonWithExpr)
 parseNonWithExpr = try parseFn <|> parseFnApp
@@ -216,11 +216,6 @@ identifier = backquoteIdentifier <|> (do
 backquoteIdentifier = char '`' *> many (noneOf "`") <* char '`'
 
 
-parseExec = do
-  symbol "/"
-  str <- some (noneOf "\n")
-  pure (EFnApp (eId "execRaw") [Arg $ makeString str])
-
 parseIf = EIf <$> (keyword "if" /> parseSingleTokenExpr) <*> (anyWhitespace *> parseNonIf) <*> (parseElse <|> pure EVoid)
 parseElse = try (anyWhitespace *> keyword "else") *> anyWhitespace *> parseExpr
 
@@ -261,7 +256,7 @@ opChars = "/<>?:\\|~!@#$%^&*+-="
 --These are operators that can't be redefined because they're used in the language syntax
 reservedOps = ["|", "~", "=", "->", "=>", "<-", "?", "\\", "//", "/*", "*/"]
 --These are operators that are used as syntax in some cases, but can be redefined in others
-builtinOps = reservedOps ++ ["*", "/", "_", "_*", ".", "-", "--", "&"]
+builtinOps = reservedOps ++ ["*", "_", "_*", ".", "-", "--", "&"]
 keywords = ["true", "false", "new", "with", "extend", "clone", "void", "if", "else", "var", "unit", "si-unit", "bin-unit"]
 
 groupChars = "()[]{}"

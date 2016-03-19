@@ -60,9 +60,9 @@ evalID' derefVars id notFoundMsg env = fst <$> evalID derefVars id notFoundMsg e
 lookupID id = evalID' True (EId (id,ByVal)) "Identifier not found: "
 
 --Similar to rawSystem, but also handles commands like "sbt" and "clear"
---myRawSystem command args = system (intercalate " " $ map parenify (command:args))
---  where parenify str = if any isSpace str then "\"" ++ str ++ "\"" else str
-myRawSystem = rawSystem
+myRawSystem command args = system (intercalate " " $ map parenify (command:args))
+  where parenify str = if any isSpace str then "\"" ++ str ++ "\"" else str
+--myRawSystem = rawSystem
 
 
 
@@ -106,13 +106,11 @@ maybeEvalID derefVars (EId (id,accessType)) env = do
 
 eval :: Expr -> EnvStack -> IOThrowsError (Expr, EnvStack)
 eval EVoid env = pure (EVoid, env)
-eval id@(EId {}) env = do
+eval id@(EId (idStr,_)) env = do
   id' <- maybeEvalID True id env
   case id' of
     Just id -> pure (id, env)
-    Nothing -> case id of
-      EId (id, ByVal) -> pure (EExec id [], env)
-      EId (id, ByName) -> throwError "Can't call a foreign program by-name!"
+    Nothing -> throwError ("Unknown identifier: " ++ idStr)
 eval (EGetVar var) env = evalID False (EId var) "Variable not found: " env
 eval (EMemberAccess obj id) env = do
   obj <- eval' obj env
@@ -123,7 +121,6 @@ eval (EMemberAccess obj id) env = do
     EObj (PrimObj prim oenv) -> do
       val <- evalID' True (eId id) "Object has no such field in member access: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
-    EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
 eval (EMemberAccessGetVar obj id) env = do
   obj <- eval' obj env
@@ -134,7 +131,6 @@ eval (EMemberAccessGetVar obj id) env = do
     EObj (PrimObj prim oenv) -> do
       val <- evalID' False (eId id) "Object has no such field in member access 2: " =<< lift (envStackFromEnv oenv)
       pure (val, env)
-    EExec prog args -> pure (EExec prog (args++[id]), env)
     x -> throwError $ "Can't access member " ++ id ++ " on non-object: " ++ prettyPrint x
 eval (EObj (FnObj params (Fn body) fnEnv)) env = do
   verifyParams params
@@ -150,13 +146,6 @@ eval (EBlock exprs) env = do
 eval (EFnApp fn args) env = do
   (fn,_) <- eval fn env
   case fn of
-    EExec prog firstArgs -> do
-      verifyArgs args
-      args' <- getExecArgs args env
-      res <- lift $ tryJust (guard . isDoesNotExistError) (myRawSystem prog (firstArgs ++ args'))
-      case res of
-        Left err -> throwError $ "Identifier or program not found: " ++ prog
-        Right res -> pure (EVoid, env)
     EObj (FnObj params fnBody fnEnv) -> do
       let
         evalFnApp = case fnBody of

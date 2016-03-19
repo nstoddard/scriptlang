@@ -1,5 +1,6 @@
 // Math
 pi = 3.141592653589793238462643383279
+e = 2.71828182845904523536028747135266249775724709369995
 tau = 2*pi
 
 sumUpTo = n -> (n * (n+1)) div 2
@@ -30,14 +31,14 @@ compose = a b -> x -> a (b (x))
 
 // External programs
 sbt = -> &sbt
+// TODO: this doesn't allow parameters
+ls = -> &ls
 pwd = -> println (wd)
 
 
 
 
 
-println 'Scriptlang version 0.1'
-pwd
 
 
 
@@ -120,9 +121,11 @@ bin-unit byte/bytes(B) = 8 bits
 
 
 unit thousand/thousands = 1000
-unit million/millions = 1000 thousand
-unit billion/billions = 1000 million
-unit trillion/trillions = 1000 billion
+unit million/millions = thousand thousand
+unit billion/billions = thousand million
+unit trillion/trillions = thousand billion
+unit quadrillion/quadrillions = thousand trillion
+unit quintillion/quintillions = thousand quadrillion
 
 unit dollar/dollars
 unit cent/cents = 0.01 dollar
@@ -136,7 +139,6 @@ unit cent/cents = 0.01 dollar
 unit word/words
 unit month/months = 1/12 year
 
-e = 2.71828182845904523536028747135266249775724709369995
 
 unit story/stories
 unit game/games
@@ -145,6 +147,16 @@ unit week/weeks = 7 days
 unit person/people
 unit cookie/cookies
 
+unit radian/radians = 1
+unit degree/degrees = pi/180 radians
+unit bitcoin/bitcoins
+unit sample/samples
+unit octet/octets = byte
+unit Mbps = Mb/s // TODO: more of these (can I derive them automatically?)
+unit pixel/pixels
+
+
+// Lambda calculus stuff. It was written for unitcalc, so it won't work here without changing the syntax. Otherwise it would work, except for the Y combinator.
 /*f = $x => (sin x)^2 + (cos x)^2
 false = $t => $f => f
 true = $t => $f => t
@@ -177,16 +189,15 @@ four = succ three
 five = succ four
 six = succ five
 seven = succ six
-eight = succ seven
-unit radian/radians = 1
-unit degree/degrees = pi/180 radians
-unit bitcoin/bitcoins
-circleArea = $r => pi r^2
-unit sample/samples
+eight = succ seven*/
+
+/*circleArea = $r => pi r^2
 x = 3.14
 x=3.14
-unit octet/octets = byte
-unit Mbps = Mb/s
-unit pixel/pixels
 res = 2.5 ft / 60000 ft
 */
+
+
+// Intro
+println 'Scriptlang version 0.1'
+pwd

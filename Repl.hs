@@ -157,13 +157,6 @@ startEnv = do
     ("!", primUnop $ onBool not),
     ("exit", nilop (lift exitSuccess)),
     ("help", makeString "TODO: write documentation"),
-    ("execRaw", ePrim [reqParam "proc"] $ \env -> do
-      proc <- envLookup' "proc" env
-      case getString' proc of
-        Just proc -> do
-          lift $ system proc
-          pure (EVoid, env)
-        Nothing -> throwError "Invalid argument to execRaw"),
     ("env", nilop' $ \env -> lift (print =<< getEnvs env) *> pure (EVoid,env)), --TODO: THIS DOESN'T WORK
     ("envOf", unop $ \expr -> (lift . (print <=< getEnvs) =<< getExprEnv expr) *> pure EVoid),
     ("print", objUnop' $ \obj env -> do

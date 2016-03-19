@@ -144,7 +144,6 @@ instance Clone Expr where
 data Expr =
   EVoid |
   EId Identifier | EFnApp Expr [Arg] | EMemberAccess Expr String |
-  EExec String [String] |
   EDef String Expr | EAssign Expr Expr | EVar (IORef Expr) | EGetVar Identifier | EMemberAccessGetVar Expr String |
   EBlock [Expr] | EMakeObj [Expr] | ENew' [Expr] | EClone Expr |
   EObj Obj |
@@ -264,7 +263,6 @@ instance Pretty Expr where
   pretty (EMemberAccessGetVar {}) = pretty "<memberAccessGetVar>"
   pretty EUnknown = pretty "_"
   pretty (EValClosure expr env) = pretty expr
-  pretty (EExec prog args) = pretty prog </> hsep (map pretty args)
   pretty x = pretty (show x) -- TODO
 
 instance Pretty Fn where
